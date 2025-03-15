@@ -1,0 +1,78 @@
+project_name: MNIST-hflip-0-accgrad-1-B256-epoch400
+paths:
+  root_dir: ${oc.env:PROJECT_ROOT}
+  output_dir: ${paths.root_dir}/output
+  log_dir: ${paths.root_dir}/logs/
+data:
+  dataset_path: ylecun/mnist
+  preprocess:
+    _target_: torchvision.transforms.Compose
+    transforms:
+      - _target_: torchvision.transforms.Resize
+        size: [32, 32]
+      - _target_: torchvision.transforms.ToTensor
+      - _target_: torchvision.transforms.Normalize
+        mean: [0.1307]
+        std: [0.3081]
+  batch_size: 256
+model:
+  G:
+    _target_: diffusers.UNet2DModel
+    sample_size: 32
+    in_channels: 1
+    out_channels: 1
+    block_out_channels: [128, 128, 256, 256, 512, 512]
+    down_block_types:
+      - DownBlock2D     # a regular ResNet downsampling block
+      - DownBlock2D
+      - DownBlock2D
+      - DownBlock2D
+      - AttnDownBlock2D # a ResNet downsampling block with spatial self-attention
+      - DownBlock2D
+    up_block_types:
+      - UpBlock2D       # a regular ResNet upsampling block
+      - AttnUpBlock2D   # a ResNet upsampling block with spatial self-attention
+      - UpBlock2D
+      - UpBlock2D
+      - UpBlock2D
+      - UpBlock2D
+  # D:
+  #   _target_: diffusers.UNet2DModel
+  #   sample_size: 28
+  #   in_channels: 1
+  #   out_channels: 1
+  #   block_out_channels: [128, 128, 256, 256, 512, 512]
+  #   down_block_types:
+  #     - DownBlock2D     # a regular ResNet downsampling block
+  #     - DownBlock2D
+  #     - DownBlock2D
+  #     - DownBlock2D
+  #     - AttnDownBlock2D # a ResNet downsampling block with spatial self-attention
+  #     - DownBlock2D
+  #   up_block_types:
+  #     - UpBlock2D       # a regular ResNet upsampling block
+  #     - AttnUpBlock2D   # a ResNet upsampling block with spatial self-attention
+  #     - UpBlock2D
+  #     - UpBlock2D
+  #     - UpBlock2D
+  #     - UpBlock2D
+trainer:
+  optimizer_cls: torch.optim.AdamW
+  lr: 0.0002
+  weight_decay: 0.01
+  lr_scheduler_cls: torch.optim.lr_scheduler.CosineAnnealingLR
+  epochs: 400
+  seed: 0
+  gradient_accumulation_steps: 1
+hydra:
+  run:
+    dir: ${paths.output_dir}/${project_name}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+loss:
+  crit_diff:
+    _target_: torch.nn.MSELoss
+  # crit_gan:
+  #   _target_: loss.VallinaGANLoss
+  lambda_gp: 10.0
+noise_scheduler:
+  _target_: diffusers.DDPMScheduler
+  num_train_timesteps: 1000
