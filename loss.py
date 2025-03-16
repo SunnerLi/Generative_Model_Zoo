@@ -1,8 +1,16 @@
+"""This script defines different loss terms which will be used in training."""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import grad
 
+# ======================== VAE related loss ========================
+class VLBLoss(nn.Module):
+    def forward(self, input: torch.Tensor):
+        mu, logvar = input.chunk(2, dim=1)
+        return -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+
+# ======================== GAN related loss ========================
 class GANLoss(nn.Module):
     def __init__(self):
         super().__init__()

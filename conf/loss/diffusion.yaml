@@ -1,0 +1,7 @@
+crit_diff:
+  _target_: torch.nn.MSELoss
+lambda_rec: 0.0
+lambda_gan: 0.0
+lambda_diff: 1.0
+lambda_vlb: 0.0
+lambda_gp: 0.0

@@ -5,10 +5,15 @@ defaults:
   - model: g
   - loss: diffusion
 
+num_sample: 16
+
+grid: False
+
 paths:
   root_dir: ${oc.env:PROJECT_ROOT}
-  output_dir: ${paths.root_dir}/output/${project_name}
-  log_dir: ${paths.root_dir}/logs/
+  output_dir: null
+  model_G_path: null
+  model_B_path: null
 
 data:
   dataset_path: ylecun/mnist
@@ -21,21 +26,10 @@ data:
       - _target_: torchvision.transforms.Normalize
         mean: [0.1307]
         std: [0.3081]
-  batch_size: 32
-  
-trainer:
-  optimizer_cls: torch.optim.AdamW
-  lr: 0.0002
-  weight_decay: 0.01
-  lr_scheduler_cls: torch.optim.lr_scheduler.CosineAnnealingLR
-  epochs: 40
-  epochs_save_weight: 40
-  seed: 0
-  gradient_accumulation_steps: 2
+  batch_size: 8
 
 hydra:
-  run:
-    dir: ${paths.output_dir}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+  output_subdir: null
 
 noise_scheduler:
   _target_: diffusers.DDPMScheduler
