@@ -22,11 +22,14 @@ from eval import evaluate
 from loss import WGANLoss
 from utils import q_sample, q_rev_sample, reparam_trick, no_sample, set_seed
 
-def build_optimizer(optimizer_cls, params, lr, weight_decay):
+def build_optimizer(optimizer_cls, params, lr, betas, weight_decay):
     if isinstance(optimizer_cls, str):
         module_name, class_name = optimizer_cls.rsplit('.', 1)
         optimizer_cls = getattr(importlib.import_module(module_name), class_name)
-    optim = optimizer_cls(params, lr=lr, weight_decay=weight_decay)
+    if weight_decay is None:
+        optim = optimizer_cls(params, lr=lr, betas=betas)
+    else:
+        optim = optimizer_cls(params, lr=lr, betas=betas, weight_decay=weight_decay)
     return optim
 
 def build_lr_scheduler(lr_scheduler_cls, optim, T_max):
@@ -55,6 +58,7 @@ def train(
     gradient_accumulation_steps: int = 4,
     # --- trainer ---
     optimizer_cls = torch.optim.AdamW,
+    betas = (0.9, 0.999),
     lr: float = 0.0001,
     weight_decay: float = 0.01,
     lr_scheduler_cls = torch.optim.lr_scheduler.CosineAnnealingLR,
@@ -89,14 +93,14 @@ def train(
     # Instantiate Discriminator model/optimizer/lr scheduler
     if D is not None:
         D = instantiate(D) if isinstance(D, omegaconf.DictConfig) else D
-        optim_d = build_optimizer(optimizer_cls, params=D.parameters(), lr=lr, weight_decay=weight_decay)
+        optim_d = build_optimizer(optimizer_cls, params=D.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
         lr_scheduler_d = build_lr_scheduler(lr_scheduler_cls, optim_d, T_max=len(loader) * epochs)
         D.train()
 
     # Instantiate Generator model/optimizer/lr scheduler
     G = instantiate(G) if isinstance(G, omegaconf.DictConfig) else G
     B = instantiate(B) if isinstance(B, omegaconf.DictConfig) else B
-    optim_g = build_optimizer(optimizer_cls, params=G.parameters() if B is None else chain(G.parameters(), B.parameters()), lr=lr, weight_decay=weight_decay)
+    optim_g = build_optimizer(optimizer_cls, params=G.parameters() if B is None else chain(G.parameters(), B.parameters()), lr=lr, betas=betas, weight_decay=weight_decay)
     lr_scheduler_g = build_lr_scheduler(lr_scheduler_cls, optim_g, T_max=len(loader) * epochs)
     G = G.train()
     B = B.train() if B is not None else B
@@ -124,6 +128,7 @@ def train(
         for input in loader:
             x = input['image']
             eval_z = torch.randn_like(x, device=device) if eval_z is None else eval_z
+            # eval_z = torch.randn(x.shape[0], 100, device=x.device)
             loss_zero = torch.zeros((1,), device=device)
             loss_g, loss_d = torch.clone(loss_zero), torch.clone(loss_zero)
             logs = {}
@@ -138,8 +143,9 @@ def train(
 
             # Prepare generator input/target. target is None for GAN since GAN does not perform regression
             noise = torch.randn_like(x)
+            # noise = torch.randn(x.shape[0], 100, device=x.device)
             in_g  = noise_scheduler.add_noise(x, noise, timesteps) if noise_scheduler else noise
-            sam_d = noise_scheduler.add_noise(x, noise, timesteps_prev) if noise_scheduler else noise
+            sam_d = noise_scheduler.add_noise(x, noise, timesteps_prev) if noise_scheduler else x
 
             # Perform forward & backward
             with accelerator.accumulate([module for module in [G, D, B] if module is not None]):
