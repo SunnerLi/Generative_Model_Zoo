@@ -112,7 +112,7 @@ def train(
     )    
     loader, crit_diff, crit_gan, G, optim_g = accelerator.prepare(loader, crit_diff, crit_gan, G, optim_g)
     B = accelerator.prepare(B) if B is not None else B
-    D, optim_d = accelerator.prepare(D, optim_d) if D is not None else D, None
+    (D, optim_d) = accelerator.prepare(D, optim_d) if D is not None else (D, None)
     device = accelerator.device
 
     # ========== Training ==========
@@ -131,13 +131,15 @@ def train(
             # Sample timestamp. Set as zero if train w/o diffusion
             if noise_scheduler:
                 timesteps = torch.randint(0, num_train_timesteps, (x.shape[0],), device=device)
+                timesteps_prev = noise_scheduler.previous_timestep(timesteps)
             else:
                 timesteps = torch.zeros(x.shape[0], device=device)
+                timesteps_prev = torch.zeros(x.shape[0], device=device)
 
             # Prepare generator input/target. target is None for GAN since GAN does not perform regression
             noise = torch.randn_like(x)
             in_g  = noise_scheduler.add_noise(x, noise, timesteps) if noise_scheduler else noise
-            sam_d = noise_scheduler.add_noise(x, noise, noise_scheduler.previous_timestep(timesteps)) if noise_scheduler else noise
+            sam_d = noise_scheduler.add_noise(x, noise, timesteps_prev) if noise_scheduler else noise
 
             # Perform forward & backward
             with accelerator.accumulate([module for module in [G, D, B] if module is not None]):
@@ -159,8 +161,8 @@ def train(
 
                     # Forward Discriminator
                     if sam_b is not None:
-                        logit_fake = D(sam_b, noise_scheduler.previous_timestep).sample
-                        logit_real = D(sam_d, noise_scheduler.previous_timestep).sample
+                        logit_fake = D(sam_b, timesteps_prev).sample
+                        logit_real = D(sam_d, timesteps_prev).sample
                         loss_dict["L_d_gan_prev"] = lambda_gan * crit_gan(logit_fake, logit_real)
                         if lambda_gp and isinstance(crit_gan, WGANLoss):
                             loss_dict["L_d_gp_prev"] = crit_gan.wgan_gp_gradient_penalty(D, sam_d, sam_b, lambda_gp)
@@ -199,11 +201,13 @@ def train(
                 # Forward Discriminator
                 if D and crit_gan:
                     if sam_b is not None:
-                        logit_fake = D(sam_b, noise_scheduler.previous_timestep).sample
-                        loss_dict["L_g_gan_prev"] = lambda_gan * crit_gan(logit_fake, crit_G=True)
+                        logit_fake = D(sam_b, timesteps_prev).sample
+                        logit_real = D(sam_d, timesteps_prev).sample
+                        loss_dict["L_g_gan_prev"] = lambda_gan * crit_gan(logit_fake, logit_real, crit_G=True)
                     if rev_b is not None:
                         logit_fake = D(rev_b, timesteps).sample
-                        loss_dict["L_g_gan_curr"] = lambda_gan * crit_gan(logit_fake, crit_G=True)
+                        logit_real = D(in_g, timesteps).sample
+                        loss_dict["L_g_gan_curr"] = lambda_gan * crit_gan(logit_fake, logit_real, crit_G=True)
                         
                 # Backward and update Generator
                 optim_g.zero_grad()
