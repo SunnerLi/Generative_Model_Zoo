@@ -13,7 +13,7 @@ This repository provides unified framework to train common generative models, in
 
 ### Usage
 
-* With argparse
+* You can simply train & sampling for MNIST diffusion model with argparse
 ```shell
 # Train MNIST diffusion model
 python3 train.py
@@ -22,10 +22,13 @@ python3 train.py
 python3 eval.py
 ```
 
-* With hydra
+* For advance, we use hydra to extend other various models, including AE, GAN and Diffusion model.
 ```shell
-# Train MNIST diffusion model via hydra
-python3 hydra_wrapper.py --task train batch_size=16
+# Train MNIST diffusion model
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=g
+
+# Train CIFAR-10 GAN
+python3 hydra_wrapper.py --task train optimizer=big-gan   loss=lsgan     model=g_d
 
 # Sampling for MNIST diffusion model via hydra
 python3 hydra_wrapper.py --task eval grid=1
