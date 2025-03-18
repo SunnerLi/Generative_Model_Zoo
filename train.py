@@ -83,8 +83,10 @@ def train(
         
     # Instantiate dataloader/criterion/noise scheduler
     loader = build_data_loader(dataset_path, preprocess, batch_size, split="train")
-    crit_diff = instantiate(crit_diff) if isinstance(crit_diff, omegaconf.DictConfig) else crit_diff
+    crit_rec  = instantiate(crit_rec) if isinstance(crit_rec, omegaconf.DictConfig) else crit_rec
     crit_gan  = instantiate(crit_gan) if isinstance(crit_gan, omegaconf.DictConfig) else crit_gan
+    crit_diff = instantiate(crit_diff) if isinstance(crit_diff, omegaconf.DictConfig) else crit_diff
+    crit_vlb  = instantiate(crit_vlb) if isinstance(crit_vlb, omegaconf.DictConfig) else crit_vlb
     if noise_scheduler is not None:
         noise_scheduler = instantiate(noise_scheduler) if isinstance(noise_scheduler, omegaconf.DictConfig) else noise_scheduler
         num_train_timesteps = 2 * noise_scheduler.timesteps[0] - noise_scheduler.timesteps[1]
@@ -113,10 +115,17 @@ def train(
         project_name, 
         config={k: v for k, v in params.items() if isinstance(v, (int, float, str))},
     )    
-    loader, crit_diff, crit_gan, G, optim_g = accelerator.prepare(loader, crit_diff, crit_gan, G, optim_g)
+    loader, G, optim_g = accelerator.prepare(loader, G, optim_g)
     B = accelerator.prepare(B) if B is not None else B
     (D, optim_d) = accelerator.prepare(D, optim_d) if D is not None else (D, None)
     device = accelerator.device
+
+    # Prepare loss criterions
+    criterions = [crit_rec, crit_gan, crit_diff, crit_vlb]
+    valid_crit = [crit for crit in criterions if crit is not None]
+    valid_crit = accelerator.prepare(valid_crit)
+    valid_crit = iter(valid_crit)
+    crit_rec, crit_gan, crit_diff, crit_vlb = (next(valid_crit) if v is not None else None for v in criterions)
 
     # ========== Training ==========
     global_step, eval_z = 0, None
@@ -143,7 +152,7 @@ def train(
             # Prepare generator input/target. target is None for GAN since GAN does not perform regression
             noise = torch.randn_like(x)
             # noise = torch.randn(x.shape[0], 100, device=x.device)
-            in_g  = noise_scheduler.add_noise(x, noise, timesteps) if noise_scheduler else noise
+            in_g  = noise_scheduler.add_noise(x, noise, timesteps) if noise_scheduler else x if B is not None else noise
             sam_d = noise_scheduler.add_noise(x, noise, timesteps_prev) if noise_scheduler else x
             sample_dict.update({"in_g": in_g, "sam_d": sam_d, "noise": noise})
 
@@ -160,8 +169,8 @@ def train(
                     out_g = G(in_g, timesteps).sample.detach()
                     in_b = {"q_sample": q_sample, "reparam": reparam_trick}.get(sample_G, no_sample)(noise_scheduler, out_g, timesteps, x)
                     out_b = B(in_b, timesteps).sample.detach() if B else in_b
-                    sam_b = out_b if sample_B is None else None
-                    rev_b = q_rev_sample(noise_scheduler, out_g, timesteps, x) if sample_B == "q_rev_sample" else None
+                    sam_b = out_b if sample_B is None and B is None else None
+                    rev_b = q_rev_sample(noise_scheduler, out_b, timesteps, x) if sample_B == "q_rev_sample" else out_b if B is not None else None
 
                     # Forward Discriminator
                     if sam_b is not None:
@@ -197,9 +206,8 @@ def train(
                 out_g = G(in_g, timesteps).sample
                 in_b = {"q_sample": q_sample, "reparam": reparam_trick,}.get(sample_G, no_sample)(noise_scheduler, out_g, timesteps, x)
                 out_b = B(in_b, timesteps).sample if B else in_b
-                sam_b = out_b if sample_B is None else None
-                rev_b = q_rev_sample(noise_scheduler, out_g, timesteps, x) if sample_B == "q_rev_sample" else None
-                sample_dict.update({"out_g": out_g, "in_b": in_b, "out_b": out_b, "sam_b": sam_b, "rev_b": rev_b})
+                sam_b = out_b if sample_B is None and B is None else None
+                rev_b = q_rev_sample(noise_scheduler, out_b, timesteps, x) if sample_B == "q_rev_sample" else out_b if B is not None else None
 
                 # Forward Discriminator
                 if D and crit_gan:
@@ -226,6 +234,7 @@ def train(
                 # Record loss/parameters
                 loss_dict.update({k: v.item() for k, v in loss_dict_G.items()})
                 loss_dict.update({"L_g": loss_g.item(), "lr_g": lr_scheduler_g.get_last_lr()[0], "step": global_step})
+                sample_dict.update({"out_g": out_g, "in_b": in_b, "out_b": out_b, "sam_b": sam_b, "rev_b": rev_b})
 
                 # Update stdout & logger
                 progress_bar.update(1)

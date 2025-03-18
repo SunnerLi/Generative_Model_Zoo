@@ -28,7 +28,10 @@ python3 eval.py
 python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=g
 
 # Train CIFAR-10 GAN
-python3 hydra_wrapper.py --task train optimizer=big-gan   loss=lsgan     model=g_d
+python3 hydra_wrapper.py --task train optimizer=big-gan   loss=lsgan     model=g_d ++noise_scheduler=null
+
+# Train an auto-encoder for MNIST
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=ae        model=g_b ++noise_scheduler=null
 
 # Sampling for MNIST diffusion model via hydra
 python3 hydra_wrapper.py --task eval grid=1
