@@ -2,6 +2,7 @@ import torch
 import random
 import numpy as np
 import os
+from torchvision.utils import make_grid
 
 def q_sample(scheduler, model_output, timesteps, sample):
     """Perform posterior backward sampling in batch"""
@@ -46,3 +47,16 @@ def set_seed(seed: int = 0):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
+
+# ================ IO ================
+def save_model(model, path):
+    torch.save(model.state_dict(), path)
+
+def save_figure(accelerator, name_image_pair: dict = {}, global_step: int = 0):
+    for name, image in name_image_pair.items():
+        if image is not None:
+            accelerator.get_tracker("tensorboard").writer.add_image(
+                name, 
+                make_grid(image), 
+                global_step=global_step
+            )
