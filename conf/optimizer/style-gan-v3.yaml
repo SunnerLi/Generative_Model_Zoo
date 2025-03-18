@@ -1,3 +1,8 @@
-optimizer_cls: torch.optim.Adam
-beta1: (0.0, 0.99)
+# --- Setting for StyleGAN 3 optimizer ---
+#
+# Differ to paper, we alter to use AdamW because of attention block in UNet2DModel
+# Adam with GAN + UNet2DModel would fail to train
+optimizer_cls: torch.optim.AdamW
+betas: [0.5, 0.99]
 lr: 0.0025
+weight_decay: 0.01

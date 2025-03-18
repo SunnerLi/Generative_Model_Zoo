@@ -36,7 +36,7 @@ def reparam_trick(scheduler, model_output, timesteps, sample):
     return mu + std * eps
 
 def no_sample(scheduler, model_output, timesteps, sample):
-    return sample
+    return model_output
 
 def set_seed(seed: int = 0):
     """Set manual seed"""
