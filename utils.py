@@ -1,9 +1,29 @@
 import torch
 import random
 import numpy as np
+import hydra
 import os
+from omegaconf import DictConfig
 from torchvision.utils import make_grid
 
+def set_seed(seed: int = 0):
+    """Set manual seed"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+
+def instantiate(config: DictConfig | None):
+    if config is None:
+        return config
+    if isinstance(config, DictConfig):
+        return hydra.utils.instantiate(config) 
+    else:
+        raise NotImplementedError()
+
+# ================ Sampling ================
 def q_sample(scheduler, model_output, timesteps, sample):
     """Perform posterior backward sampling in batch"""
     return torch.stack([
@@ -38,15 +58,6 @@ def reparam_trick(scheduler, model_output, timesteps, sample):
 
 def no_sample(scheduler, model_output, timesteps, sample):
     return model_output
-
-def set_seed(seed: int = 0):
-    """Set manual seed"""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
 
 # ================ IO ================
 def save_model(model, path):

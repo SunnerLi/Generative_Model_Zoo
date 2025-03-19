@@ -1,15 +1,11 @@
-import copy
 import importlib
 import os
 
 import fire  # pip3 install fire
-import hydra
-import omegaconf
 import rootutils  # pip3 install rootutils
 import torch
 from accelerate import Accelerator  # pip3 install tensorboard
 from diffusers import DDPMScheduler, UNet2DModel
-from hydra.utils import instantiate
 from itertools import chain
 from torchvision import transforms
 from tqdm import tqdm
@@ -19,7 +15,12 @@ root_path = rootutils.setup_root(__file__, indicator=".project-root", pythonpath
 from data import build_data_loader
 from eval import evaluate
 from loss import WGANLoss
-from utils import q_sample, q_rev_sample, reparam_trick, no_sample, set_seed, save_model, save_figure
+from utils import (
+    q_sample, q_rev_sample, reparam_trick, no_sample, 
+    set_seed, 
+    save_model, save_figure,
+    instantiate,
+)
 
 def build_optimizer(optimizer_cls, params, lr, betas, weight_decay):
     if isinstance(optimizer_cls, str):
@@ -79,53 +80,37 @@ def train(
 ):
     set_seed(seed)
     os.makedirs(model_dir, exist_ok=True)
-    params = copy.deepcopy(locals())
+    params = {k: v for k, v in locals().items() if isinstance(v, (int, float, str))}
         
-    # Instantiate dataloader/criterion/noise scheduler
+    # Instantiate dataloader/model/criterions/noise scheduler
     loader = build_data_loader(dataset_path, preprocess, batch_size, split="train")
-    crit_rec  = instantiate(crit_rec) if isinstance(crit_rec, omegaconf.DictConfig) else crit_rec
-    crit_gan  = instantiate(crit_gan) if isinstance(crit_gan, omegaconf.DictConfig) else crit_gan
-    crit_diff = instantiate(crit_diff) if isinstance(crit_diff, omegaconf.DictConfig) else crit_diff
-    crit_vlb  = instantiate(crit_vlb) if isinstance(crit_vlb, omegaconf.DictConfig) else crit_vlb
-    if noise_scheduler is not None:
-        noise_scheduler = instantiate(noise_scheduler) if isinstance(noise_scheduler, omegaconf.DictConfig) else noise_scheduler
-        num_train_timesteps = 2 * noise_scheduler.timesteps[0] - noise_scheduler.timesteps[1]
+    criterions = [crit_rec, crit_gan, crit_diff, crit_vlb]
+    crit_rec, crit_gan, crit_diff, crit_vlb = [instantiate(crit) for crit in criterions]
+    G, B, D = [instantiate(model) for model in [G, B, D]]
+    noise_scheduler = instantiate(noise_scheduler)
 
     # Instantiate Discriminator model/optimizer/lr scheduler
     if D is not None:
-        D = instantiate(D) if isinstance(D, omegaconf.DictConfig) else D
         optim_d = build_optimizer(optimizer_cls, params=D.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
         lr_scheduler_d = build_lr_scheduler(lr_scheduler_cls, optim_d, T_max=len(loader) * epochs)
         D.train()
 
     # Instantiate Generator model/optimizer/lr scheduler
-    G = instantiate(G) if isinstance(G, omegaconf.DictConfig) else G
-    B = instantiate(B) if isinstance(B, omegaconf.DictConfig) else B
     optim_g = build_optimizer(optimizer_cls, params=G.parameters() if B is None else chain(G.parameters(), B.parameters()), lr=lr, betas=betas, weight_decay=weight_decay)
     lr_scheduler_g = build_lr_scheduler(lr_scheduler_cls, optim_g, T_max=len(loader) * epochs)
     G = G.train()
     B = B.train() if B is not None else B
 
-    # Set accelerator (GPU training/logger)
+    # Set accelerator (GPU training/logger) and prepare
     accelerator = Accelerator(
         gradient_accumulation_steps=gradient_accumulation_steps, 
         log_with=["tensorboard"], project_dir=log_dir
     )
-    accelerator.init_trackers(
-        project_name, 
-        config={k: v for k, v in params.items() if isinstance(v, (int, float, str))},
-    )    
-    loader, G, optim_g = accelerator.prepare(loader, G, optim_g)
-    B = accelerator.prepare(B) if B is not None else B
-    (D, optim_d) = accelerator.prepare(D, optim_d) if D is not None else (D, None)
+    accelerator.init_trackers(project_name, config=params)    
+    G, B, D = accelerator.prepare(G, B, D)
+    loader, optim_g, optim_d = accelerator.prepare(loader, optim_g, optim_d)
+    crit_rec, crit_gan, crit_diff, crit_vlb = accelerator.prepare(crit_rec, crit_gan, crit_diff, crit_vlb)
     device = accelerator.device
-
-    # Prepare loss criterions
-    criterions = [crit_rec, crit_gan, crit_diff, crit_vlb]
-    valid_crit = [crit for crit in criterions if crit is not None]
-    valid_crit = accelerator.prepare(valid_crit)
-    valid_crit = iter(valid_crit)
-    crit_rec, crit_gan, crit_diff, crit_vlb = (next(valid_crit) if v is not None else None for v in criterions)
 
     # ========== Training ==========
     global_step, eval_z = 0, None
@@ -143,11 +128,12 @@ def train(
 
             # Sample timestamp. Set as zero if train w/o diffusion
             if noise_scheduler:
+                num_train_timesteps = 2 * noise_scheduler.timesteps[0] - noise_scheduler.timesteps[1]
                 timesteps = torch.randint(0, num_train_timesteps, (x.shape[0],), device=device)
                 timesteps_prev = noise_scheduler.previous_timestep(timesteps)
             else:
-                timesteps = torch.zeros(x.shape[0], device=device)
-                timesteps_prev = torch.zeros(x.shape[0], device=device)
+                timesteps = torch.ones(x.shape[0], device=device)
+                timesteps_prev = torch.ones(x.shape[0], device=device)
 
             # Prepare generator input/target. target is None for GAN since GAN does not perform regression
             noise = torch.randn_like(x)

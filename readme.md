@@ -2,7 +2,7 @@
     <h1 align="center">Generative Model Zoo</h1>
     <img src="image.png" />
     <img src="https://img.shields.io/badge/Pytorch-2.4.1-red.svg" alt="Example Badge">
-    <img src="https://img.shields.io/badge/Python-3.11.0-blue.svg" alt="Example Badge">
+    <img src="https://img.shields.io/badge/Python-3.11.9-blue.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Hydra-1.3.2-purple.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Diffusers-0.32.2-yellow.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Accelerate-1.0.0-yellow.svg" alt="Example Badge">
