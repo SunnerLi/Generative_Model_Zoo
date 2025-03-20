@@ -7,9 +7,19 @@
     <img src="https://img.shields.io/badge/Diffusers-0.32.2-yellow.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Accelerate-1.0.0-yellow.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Datasets-3.0.1-yellow.svg" alt="Example Badge">
+    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="Example Badge">
+    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Example Badge">
 </div>
 
 This repository provides unified framework to train common generative models, including VAE, GAN and Diffusion model. 
+
+### Install
+* Use `uv` to create environment and install packages. Change `gai-zoo` as any name you want.
+```shell
+$ uv venv gai-zoo --python python3.11
+$ source gai-zoo/bin/activate
+$ uv pip install -r requirement.txt
+```
 
 ### Usage
 
