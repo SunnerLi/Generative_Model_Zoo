@@ -19,7 +19,7 @@ from utils import (
     q_sample, q_rev_sample, reparam_trick, no_sample, 
     set_seed, 
     save_model, save_figure,
-    instantiate,
+    instantiate, initial_orthogonal,
 )
 
 def build_optimizer(optimizer_cls, params, lr, betas, weight_decay):
@@ -59,7 +59,8 @@ def train(
     # --- trainer ---
     optimizer_cls = torch.optim.AdamW,
     betas = (0.9, 0.999),
-    lr: float = 0.0001,
+    lr_g: float = 0.0002,
+    lr_d: float = 0.0002,
     weight_decay: float = 0.01,
     lr_scheduler_cls = torch.optim.lr_scheduler.CosineAnnealingLR,
     epochs: int = 1,
@@ -89,14 +90,20 @@ def train(
     G, B, D = [instantiate(model) for model in [G, B, D]]
     noise_scheduler = instantiate(noise_scheduler)
 
-    # Instantiate Discriminator model/optimizer/lr scheduler
+    # Initialize generator parameters. Use orthogonal since we use SiLU in all models
+    G = G.apply(initial_orthogonal) if G else G
+    B = B.apply(initial_orthogonal) if B else B
+    D = D.apply(initial_orthogonal) if D else D
+
+    # Instantiate Discriminator optimizer & lr scheduler
     if D is not None:
-        optim_d = build_optimizer(optimizer_cls, params=D.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
+        optim_d = build_optimizer(optimizer_cls, D.parameters(), lr_d, betas, weight_decay)
         lr_scheduler_d = build_lr_scheduler(lr_scheduler_cls, optim_d, T_max=len(loader) * epochs)
         D.train()
 
-    # Instantiate Generator model/optimizer/lr scheduler
-    optim_g = build_optimizer(optimizer_cls, params=G.parameters() if B is None else chain(G.parameters(), B.parameters()), lr=lr, betas=betas, weight_decay=weight_decay)
+    # Instantiate Generator optimizer & lr scheduler
+    ae_params = G.parameters() if B is None else chain(G.parameters(), B.parameters())
+    optim_g = build_optimizer(optimizer_cls, ae_params, lr_g, betas, weight_decay)
     lr_scheduler_g = build_lr_scheduler(lr_scheduler_cls, optim_g, T_max=len(loader) * epochs)
     G = G.train()
     B = B.train() if B is not None else B
@@ -122,8 +129,8 @@ def train(
             x = input['image']
             eval_z = torch.randn_like(x, device=device) if eval_z is None else eval_z
             # eval_z = torch.randn(x.shape[0], 100, device=x.device)
-            loss_zero = torch.zeros((1,), device=device)
-            loss_g, loss_d = torch.clone(loss_zero), torch.clone(loss_zero)
+            loss0 = torch.zeros((1,), device=device)
+            loss_g, loss_d = loss0.clone(), loss0.clone()
             loss_dict, sample_dict = {}, {}
 
             # Sample timestamp. Set as zero if train w/o diffusion
@@ -149,14 +156,17 @@ def train(
                 if D and crit_gan:
                     # Initialize loss dict
                     loss_dict_D = ["L_d_gan_prev", "L_d_gp_prev", "L_d_gan_curr", "L_d_gp_curr"]
-                    loss_dict_D = {name: loss_zero for name in loss_dict_D}
+                    loss_dict_D = {name: loss0 for name in loss_dict_D}
 
                     # Forward encoder-decoder
+                    # Note: rev_b is used to compute t-1 adv loss; sam_b is used to compute t adv loss
                     out_g = G(in_g, timesteps).sample.detach()
-                    in_b = {"q_sample": q_sample, "reparam": reparam_trick}.get(sample_G, no_sample)(noise_scheduler, out_g, timesteps, x)
+                    in_b = {
+                        "q_sample": q_sample, "reparam": reparam_trick
+                    }.get(sample_G, no_sample)(noise_scheduler, out_g, timesteps, x)
                     out_b = B(in_b, timesteps).sample.detach() if B else in_b
                     sam_b = out_b if sample_B is None and B is None else None
-                    rev_b = q_rev_sample(noise_scheduler, out_b, timesteps, x) if sample_B == "q_rev_sample" else out_b if B is not None else None
+                    rev_b = q_rev_sample(noise_scheduler, out_b, timesteps, x) if sample_B == "q_rev_sample" else None
 
                     # Forward Discriminator
                     if sam_b is not None:
@@ -176,24 +186,30 @@ def train(
                     optim_d.zero_grad()
                     loss_d = sum(l for l in loss_dict_D.values())
                     accelerator.backward(loss_d)
+                    grad_norm_d = accelerator.clip_grad_norm_(D.parameters(), max_norm=1.0)
                     optim_d.step()
                     lr_scheduler_d.step()
 
                     # Record loss/parameters
                     loss_dict.update({k: v.item() for k, v in loss_dict_D.items()})
                     loss_dict.update({"L_d": loss_d.item(), "lr_d": lr_scheduler_d.get_last_lr()[0]})
+                    loss_dict.update({"grad_norm_d": grad_norm_d.item()})
 
                 # ----- Generator process -----
                 # Initialize loss dict
                 loss_dict_G = ["L_g_gan_prev", "L_g_gan_curr", "L_diff", "L_rec", "L_g_vlb", "L_b_vlb"]
-                loss_dict_G = {name: loss_zero for name in loss_dict_G}
+                loss_dict_G = {name: loss0 for name in loss_dict_G}
 
                 # Forward encoder-decoder
+                # Note: Besides to compute adv loss, rev_b is also used to compute reconstruction loss
                 out_g = G(in_g, timesteps).sample
-                in_b = {"q_sample": q_sample, "reparam": reparam_trick,}.get(sample_G, no_sample)(noise_scheduler, out_g, timesteps, x)
+                in_b = {
+                    "q_sample": q_sample, "reparam": reparam_trick
+                }.get(sample_G, no_sample)(noise_scheduler, out_g, timesteps, x)
                 out_b = B(in_b, timesteps).sample if B else in_b
                 sam_b = out_b if sample_B is None and B is None else None
-                rev_b = q_rev_sample(noise_scheduler, out_b, timesteps, x) if sample_B == "q_rev_sample" else out_b if B is not None else None
+                rev_b = out_b if crit_rec and lambda_rec else None
+                rev_b = q_rev_sample(noise_scheduler, out_b, timesteps, x) if sample_B == "q_rev_sample" else rev_b
 
                 # Forward Discriminator
                 if D and crit_gan:
@@ -208,18 +224,20 @@ def train(
                         
                 # Backward and update Generator
                 optim_g.zero_grad()
-                loss_dict_G["L_diff"]  = lambda_diff * crit_diff(out_g, noise) if crit_diff and lambda_diff else loss_zero
-                loss_dict_G["L_rec"]   = lambda_rec * crit_rec(rev_b, in_g) if crit_rec and lambda_rec else loss_zero
-                loss_dict_G["L_g_vlb"] = lambda_vlb * crit_vlb(out_g) if crit_vlb and lambda_vlb else loss_zero
-                loss_dict_G["L_b_vlb"] = lambda_vlb * crit_vlb(out_b) if crit_vlb and lambda_vlb else loss_zero
+                loss_dict_G["L_diff"]  = lambda_diff * crit_diff(out_g, noise) if crit_diff and lambda_diff else loss0
+                loss_dict_G["L_rec"]   = lambda_rec * crit_rec(rev_b, in_g) if crit_rec and lambda_rec else loss0
+                loss_dict_G["L_g_vlb"] = lambda_vlb * crit_vlb(out_g) if crit_vlb and lambda_vlb else loss0
+                loss_dict_G["L_b_vlb"] = lambda_vlb * crit_vlb(out_b) if crit_vlb and lambda_vlb else loss0
                 loss_g = sum(l for l in loss_dict_G.values())
                 accelerator.backward(loss_g)
+                grad_norm_gb = accelerator.clip_grad_norm_(ae_params, max_norm=1.0)
                 optim_g.step()
                 lr_scheduler_g.step()
                 
                 # Record loss/parameters
                 loss_dict.update({k: v.item() for k, v in loss_dict_G.items()})
                 loss_dict.update({"L_g": loss_g.item(), "lr_g": lr_scheduler_g.get_last_lr()[0], "step": global_step})
+                loss_dict.update({"grad_norm_gb": grad_norm_gb.item()})
                 sample_dict.update({"out_g": out_g, "in_b": in_b, "out_b": out_b, "sam_b": sam_b, "rev_b": rev_b})
 
                 # Update stdout & logger

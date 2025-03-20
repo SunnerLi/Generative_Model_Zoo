@@ -15,6 +15,7 @@ def set_seed(seed: int = 0):
         torch.cuda.manual_seed_all(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
 
+# ========== Instantiate & Initialization ==========
 def instantiate(config: DictConfig | None):
     if config is None:
         return config
@@ -22,8 +23,12 @@ def instantiate(config: DictConfig | None):
         return hydra.utils.instantiate(config) 
     else:
         raise NotImplementedError()
+    
+def initial_orthogonal(m):
+    if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
+        torch.nn.init.orthogonal_(m.weight)
 
-# ================ Sampling ================
+# ==================== Sampling ====================
 def q_sample(scheduler, model_output, timesteps, sample):
     """Perform posterior backward sampling in batch"""
     return torch.stack([
@@ -59,7 +64,7 @@ def reparam_trick(scheduler, model_output, timesteps, sample):
 def no_sample(scheduler, model_output, timesteps, sample):
     return model_output
 
-# ================ IO ================
+# ====================== IO ======================
 def save_model(model, path):
     torch.save(model.state_dict(), path)
 
