@@ -26,7 +26,7 @@ data:
   
 trainer:
   lr_scheduler_cls: torch.optim.lr_scheduler.CosineAnnealingLR
-  epochs: 20
+  epochs: 40
   epochs_save_weight: 20
   seed: 0
   gradient_accumulation_steps: 1

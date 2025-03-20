@@ -71,11 +71,12 @@ def train(
     crit_gan = None,
     crit_diff = torch.nn.MSELoss(),
     crit_vlb = None,
-    lambda_rec: float = 1.0,
-    lambda_gan: float = 1.0,
+    lambda_rec: float = 0.0,
+    lambda_gan: float = 0.0,
     lambda_diff: float = 1.0,
-    lambda_vlb: float = 1.0,
-    lambda_gp: float = 10.0,
+    lambda_vlb_g: float = 0.0,
+    lambda_vlb_b: float = 0.0,
+    lambda_gp: float = 0.0,
     # --- noise scheduler ---
     noise_scheduler = DDPMScheduler(1000),  # or None
 ):
@@ -89,6 +90,7 @@ def train(
     crit_rec, crit_gan, crit_diff, crit_vlb = [instantiate(crit) for crit in criterions]
     G, B, D = [instantiate(model) for model in [G, B, D]]
     noise_scheduler = instantiate(noise_scheduler)
+    optim_g = optim_d = None
 
     # Initialize generator parameters. Use orthogonal since we use SiLU in all models
     G = G.apply(initial_orthogonal) if G else G
@@ -226,18 +228,19 @@ def train(
                 optim_g.zero_grad()
                 loss_dict_G["L_diff"]  = lambda_diff * crit_diff(out_g, noise) if crit_diff and lambda_diff else loss0
                 loss_dict_G["L_rec"]   = lambda_rec * crit_rec(rev_b, in_g) if crit_rec and lambda_rec else loss0
-                loss_dict_G["L_g_vlb"] = lambda_vlb * crit_vlb(out_g) if crit_vlb and lambda_vlb else loss0
-                loss_dict_G["L_b_vlb"] = lambda_vlb * crit_vlb(out_b) if crit_vlb and lambda_vlb else loss0
+                loss_dict_G["L_g_vlb"] = lambda_vlb_g * crit_vlb(out_g) if crit_vlb and lambda_vlb_g else loss0
+                loss_dict_G["L_b_vlb"] = lambda_vlb_b * crit_vlb(out_b) if crit_vlb and lambda_vlb_b else loss0
                 loss_g = sum(l for l in loss_dict_G.values())
                 accelerator.backward(loss_g)
-                grad_norm_gb = accelerator.clip_grad_norm_(ae_params, max_norm=1.0)
+                grad_norm_g = accelerator.clip_grad_norm_(G.parameters(), max_norm=1.0)
+                grad_norm_b = accelerator.clip_grad_norm_(B.parameters(), max_norm=1.0) if B else loss0
                 optim_g.step()
                 lr_scheduler_g.step()
                 
                 # Record loss/parameters
                 loss_dict.update({k: v.item() for k, v in loss_dict_G.items()})
                 loss_dict.update({"L_g": loss_g.item(), "lr_g": lr_scheduler_g.get_last_lr()[0], "step": global_step})
-                loss_dict.update({"grad_norm_gb": grad_norm_gb.item()})
+                loss_dict.update({"grad_norm_g": grad_norm_g.item(), "grad_norm_b": grad_norm_b.item()})
                 sample_dict.update({"out_g": out_g, "in_b": in_b, "out_b": out_b, "sam_b": sam_b, "rev_b": rev_b})
 
                 # Update stdout & logger
@@ -253,13 +256,13 @@ def train(
         # Sampling with fixed z and store image/weight
         save_figure(accelerator, {"fix_z_sample": evaluate(G=G, B=B, noise_scheduler=noise_scheduler, noise=eval_z)}, epoch)
         if epochs < epochs_save_weight or (epoch+1) % epochs_save_weight == 0:
+            accelerator.wait_for_everyone()
             save_model(model=G, path=os.path.join(model_dir, f"G_{epoch+1:04d}.pth"))
-            if B is not None:
-                save_model(model=B, path=os.path.join(model_dir, f"B_{epoch+1:04d}.pth"))
-            if D is not None:
-                save_model(model=D, path=os.path.join(model_dir, f"D_{epoch+1:04d}.pth"))
+            save_model(model=B, path=os.path.join(model_dir, f"B_{epoch+1:04d}.pth"))
+            save_model(model=D, path=os.path.join(model_dir, f"D_{epoch+1:04d}.pth"))
 
     # Finish training
+    accelerator.wait_for_everyone()
     accelerator.end_training()
     progress_bar.close()
     print("Done!")

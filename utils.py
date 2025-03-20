@@ -22,7 +22,7 @@ def instantiate(config: DictConfig | None):
     if isinstance(config, DictConfig):
         return hydra.utils.instantiate(config) 
     else:
-        raise NotImplementedError()
+        return config
     
 def initial_orthogonal(m):
     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
@@ -66,7 +66,8 @@ def no_sample(scheduler, model_output, timesteps, sample):
 
 # ====================== IO ======================
 def save_model(model, path):
-    torch.save(model.state_dict(), path)
+    if model is not None:
+        torch.save(model.state_dict(), path)
 
 def save_figure(accelerator, name_image_pair: dict = {}, global_step: int = 0):
     for name, image in name_image_pair.items():

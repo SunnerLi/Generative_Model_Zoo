@@ -1,8 +1,11 @@
 crit_rec:
   _target_: torch.nn.MSELoss
+  reduction: sum
+crit_vlb:
+  _target_: loss.VLBLoss
 lambda_rec: 1.0
 lambda_gan: 0.0
 lambda_diff: 0.0
-lambda_vlb_g: 0.0
+lambda_vlb_g: 1.0
 lambda_vlb_b: 0.0
 lambda_gp: 0.0

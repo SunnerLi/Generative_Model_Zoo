@@ -3,5 +3,6 @@ crit_gan:
 lambda_rec: 0.0
 lambda_gan: 1.0
 lambda_diff: 0.0
-lambda_vlb: 0.0
+lambda_vlb_g: 0.0
+lambda_vlb_b: 0.0
 lambda_gp: 0.0
