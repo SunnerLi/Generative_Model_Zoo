@@ -25,13 +25,13 @@ python3 eval.py
 * For advance, we use hydra to extend other various models, including AE, GAN and Diffusion model.
 ```shell
 # Train MNIST diffusion model
-python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=g
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=size_32_g
 
 # Train CIFAR-10 GAN
-python3 hydra_wrapper.py --task train optimizer=big-gan   loss=lsgan     model=g_d ++noise_scheduler=null
+python3 hydra_wrapper.py --task train optimizer=style-gan loss=lsgan     model=size_32_g_d ++noise_scheduler=null
 
 # Train an auto-encoder for MNIST
-python3 hydra_wrapper.py --task train optimizer=diffusion loss=ae        model=g_b ++noise_scheduler=null
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=ae        model=size_32_g_b ++noise_scheduler=null
 
 # Sampling for MNIST diffusion model via hydra
 python3 hydra_wrapper.py --task eval grid=1

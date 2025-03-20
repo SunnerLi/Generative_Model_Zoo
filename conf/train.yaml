@@ -22,14 +22,14 @@ data:
       - _target_: torchvision.transforms.Normalize
         mean: [0.1307]
         std: [0.3081]
-  batch_size: 32
+  batch_size: 64
   
 trainer:
   lr_scheduler_cls: torch.optim.lr_scheduler.CosineAnnealingLR
-  epochs: 40
-  epochs_save_weight: 40
+  epochs: 20
+  epochs_save_weight: 20
   seed: 0
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 1
 
 hydra:
   run:

@@ -1,0 +1,7 @@
+crit_gan:
+  _target_: loss.LSGANLoss
+lambda_rec: 0.0
+lambda_gan: 1.0
+lambda_diff: 0.0
+lambda_vlb: 0.0
+lambda_gp: 0.0

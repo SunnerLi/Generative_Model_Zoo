@@ -1,5 +1,0 @@
-crit_diff:
-  _target_: torch.nn.MSELoss
-crit_gan:
-  _target_: loss.VallinaGANLoss
-lambda_gp: 10.0
