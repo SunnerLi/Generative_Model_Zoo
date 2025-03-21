@@ -1,6 +1,6 @@
 <div align="center">
     <h1 align="center">Generative Model Zoo</h1>
-    <img src="assets/image.png" />
+    <img src="assets/image_v1.png" />
     <img src="https://img.shields.io/badge/Pytorch-2.4.1-red.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Python-3.11.9-blue.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Hydra-1.3.2-purple.svg" alt="Example Badge">
