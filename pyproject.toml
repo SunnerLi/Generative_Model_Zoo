@@ -24,6 +24,7 @@ dependencies = [
     "pytest",
     "omegaconf",
     "tqdm",
+    "ruff",
 
     # --------- CLI --------- #
     "fire",
@@ -40,3 +41,23 @@ dependencies = [
 
 [tool.setuptools]
 py-modules = []
+
+# ==================== Ruff Setting ====================
+[tool.ruff]
+line-length = 80
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+fixable = ["ALL"]
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+exclude = [
+    "src/train.py",
+    "src/eval.py",
+]
