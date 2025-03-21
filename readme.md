@@ -1,6 +1,6 @@
 <div align="center">
     <h1 align="center">Generative Model Zoo</h1>
-    <img src="image.png" />
+    <img src="assets/image.png" />
     <img src="https://img.shields.io/badge/Pytorch-2.4.1-red.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Python-3.11.9-blue.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Hydra-1.3.2-purple.svg" alt="Example Badge">
@@ -19,6 +19,7 @@ This repository provides unified framework to train common generative models, in
 $ uv venv gai-zoo --python python3.11
 $ source gai-zoo/bin/activate
 $ uv pip install .
+$ touch .project-root
 ```
 * Docker: Directly build image and install the dependency.
 ```shell
