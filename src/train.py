@@ -1,10 +1,10 @@
 import importlib
 import os
 
-import fire  # pip3 install fire
-import rootutils  # pip3 install rootutils
+import fire
+import rootutils
 import torch
-from accelerate import Accelerator  # pip3 install tensorboard
+from accelerate import Accelerator
 from diffusers import DDPMScheduler, UNet2DModel
 from itertools import chain
 from torchvision import transforms

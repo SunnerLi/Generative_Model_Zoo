@@ -4,7 +4,7 @@ import fire
 import rootutils
 import torch
 import omegaconf
-from accelerate import Accelerator  # pip3 install tensorboard
+from accelerate import Accelerator
 from diffusers import DDPMScheduler, UNet2DModel
 from hydra import compose, initialize
 from hydra.utils import instantiate
