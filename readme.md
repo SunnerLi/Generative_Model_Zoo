@@ -11,7 +11,7 @@
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Example Badge">
 </div>
 
-This repository provides unified framework to train common generative models, including VAE, GAN and Diffusion model. 
+This repository provides unified framework to train common un-conditional generative models, including VAE, GAN and Diffusion model. 
 
 ### Install
 * Virtual environment: Use [uv](https://github.com/astral-sh/uv) to create environment and install packages. Change `gai-zoo` as any name you want.
