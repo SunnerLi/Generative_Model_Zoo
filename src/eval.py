@@ -13,7 +13,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import to_pil_image
 from torchvision.utils import make_grid, save_image
 
-root_path = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+root_path = rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
 
 from src.data import build_data_loader
 

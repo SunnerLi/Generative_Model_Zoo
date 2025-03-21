@@ -21,12 +21,12 @@ RUN echo "export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH" >> /etc
 ADD https://astral.sh/uv/0.6.9/install.sh /uv-installer.sh
 RUN sh /uv-installer.sh && rm /uv-installer.sh
 ENV PATH="/root/.local/bin/:$PATH"
+ENV UV_HTTP_TIMEOUT=120
 
 # Set working directory and copy file
 WORKDIR /home/
 COPY . /home/
 
 # Install dependency of this repository
-RUN uv venv gai-zoo --python python3.12
-RUN source gai-zoo/bin/activate
-RUN uv pip install .
+RUN uv venv ./venv/gai-zoo --python python3.12
+RUN bash -c "source ./venv/gai-zoo/bin/activate && uv pip install ."

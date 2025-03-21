@@ -10,7 +10,7 @@ from itertools import chain
 from torchvision import transforms
 from tqdm import tqdm
 
-root_path = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+root_path = rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
 
 from src.data import build_data_loader
 from src.eval import evaluate

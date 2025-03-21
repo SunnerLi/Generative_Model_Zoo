@@ -16,8 +16,8 @@ This repository provides unified framework to train common un-conditional genera
 ### Install
 * Virtual environment: Use [uv](https://github.com/astral-sh/uv) to create environment and install packages. Change `gai-zoo` as any name you want.
 ```shell
-$ uv venv gai-zoo --python python3.11
-$ source gai-zoo/bin/activate
+$ uv venv ./venv/gai-zoo --python python3.11
+$ source ./venv/gai-zoo/bin/activate
 $ uv pip install .
 $ touch .project-root
 ```

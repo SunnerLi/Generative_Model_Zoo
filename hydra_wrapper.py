@@ -6,7 +6,7 @@ import rootutils  # pip3 install rootutils
 import sys
 from omegaconf import DictConfig, OmegaConf
 
-root_path = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+root_path = rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
 
 from src.eval import eval
 from src.train import train

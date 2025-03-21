@@ -1,6 +1,7 @@
 logs
-.project-root
 output
 __pycache__
 .archived
 build
+.venv
+.pytest_cache
