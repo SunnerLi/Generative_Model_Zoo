@@ -32,10 +32,10 @@ $ docker run --gpus "device=0" -it -d ${shell pwd}:/home/gai-zoo --name gai-zoo 
 * You can simply train & sampling for MNIST diffusion model with argparse
 ```shell
 # Train MNIST diffusion model
-python3 train.py
+python3 src/train.py
 
 # Sampling for MNIST diffusion model
-python3 eval.py
+python3 src/eval.py
 ```
 
 * For advance, we use hydra to extend other various models, including AE, GAN and Diffusion model.

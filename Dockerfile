@@ -18,10 +18,10 @@ RUN echo "export PATH=/usr/local/cuda/bin:$PATH" >> /etc/bash.bashrc
 RUN echo "export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH" >> /etc/bash.bashrc
 
 # Install UV
-ADD https://astral.sh/uv/0.6.9/install.sh /uv-installer.sh
+ADD https://astral.sh/uv/install.sh /uv-installer.sh
 RUN sh /uv-installer.sh && rm /uv-installer.sh
 ENV PATH="/root/.local/bin/:$PATH"
-ENV UV_HTTP_TIMEOUT=120
+ENV UV_HTTP_TIMEOUT=1200
 
 # Set working directory and copy file
 WORKDIR /home/
