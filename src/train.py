@@ -12,10 +12,10 @@ from tqdm import tqdm
 
 root_path = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-from data import build_data_loader
-from eval import evaluate
-from loss import WGANLoss
-from utils import (
+from src.data import build_data_loader
+from src.eval import evaluate
+from src.loss import WGANLoss
+from src.utils import (
     q_sample, q_rev_sample, reparam_trick, no_sample, 
     set_seed, 
     save_model, save_figure,

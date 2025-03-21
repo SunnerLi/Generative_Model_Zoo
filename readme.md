@@ -4,9 +4,9 @@
     <img src="https://img.shields.io/badge/Pytorch-2.4.1-red.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Python-3.11.9-blue.svg" alt="Example Badge">
     <img src="https://img.shields.io/badge/Hydra-1.3.2-purple.svg" alt="Example Badge">
-    <img src="https://img.shields.io/badge/Diffusers-0.32.2-yellow.svg" alt="Example Badge">
-    <img src="https://img.shields.io/badge/Accelerate-1.0.0-yellow.svg" alt="Example Badge">
-    <img src="https://img.shields.io/badge/Datasets-3.0.1-yellow.svg" alt="Example Badge">
+    <img src="https://img.shields.io/badge/🤗Diffusers-0.32.2-yellow.svg" alt="Example Badge">
+    <img src="https://img.shields.io/badge/🤗Accelerate-1.0.0-yellow.svg" alt="Example Badge">
+    <img src="https://img.shields.io/badge/🤗Datasets-3.0.1-yellow.svg" alt="Example Badge">
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="Example Badge">
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Example Badge">
 </div>
@@ -14,11 +14,16 @@
 This repository provides unified framework to train common generative models, including VAE, GAN and Diffusion model. 
 
 ### Install
-* Use `uv` to create environment and install packages. Change `gai-zoo` as any name you want.
+* Virtual environment: Use [uv](https://github.com/astral-sh/uv) to create environment and install packages. Change `gai-zoo` as any name you want.
 ```shell
 $ uv venv gai-zoo --python python3.11
 $ source gai-zoo/bin/activate
-$ uv pip install -r requirement.txt
+$ uv pip install .
+```
+* Docker: Directly build image and install the dependency.
+```shell
+$ docker build -t gai-zoo:latest -f Dockerfile .
+$ docker run --gpus "device=0" -it -d ${shell pwd}:/home/gai-zoo --name gai-zoo gai-zoo:latest /bin/bash
 ```
 
 ### Usage

@@ -15,7 +15,7 @@ from torchvision.utils import make_grid, save_image
 
 root_path = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-from data import build_data_loader
+from src.data import build_data_loader
 
 def evaluate(G, B, noise_scheduler, noise: torch.Tensor):
     """Core evaluate function to perform inference. 

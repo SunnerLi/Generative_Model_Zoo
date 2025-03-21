@@ -8,8 +8,8 @@ from omegaconf import DictConfig, OmegaConf
 
 root_path = rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-from eval import eval
-from train import train
+from src.eval import eval
+from src.train import train
 
 # Parse the task category first and remain rest argument for hydra config
 parser = argparse.ArgumentParser()
@@ -17,7 +17,7 @@ parser.add_argument("--task", type=str, choices=["train", "eval"], required=True
 args, remaining_argv = parser.parse_known_args()
 sys.argv = [sys.argv[0]] + remaining_argv
 
-@hydra.main(version_base="1.3", config_path="./conf", config_name="train.yaml")
+@hydra.main(version_base="1.3", config_path="./config", config_name="train.yaml")
 def train_by_config(cfg: DictConfig):
     """Hydra wrapper to launch training by hydra config value"""
     return train(
@@ -55,7 +55,7 @@ def train_by_config(cfg: DictConfig):
         noise_scheduler=cfg.get("noise_scheduler", None), 
     )
 
-@hydra.main(version_base="1.3", config_path="./conf", config_name="eval.yaml")
+@hydra.main(version_base="1.3", config_path="./config", config_name="eval.yaml")
 def eval_by_config(cfg: DictConfig):
     """Hydra wrapper to launch evaluation by hydra config value"""
     return eval(
