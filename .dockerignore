@@ -1,0 +1,9 @@
+logs
+output
+__pycache__
+.archived
+build
+.venv
+.pytest_cache
+readme.md
+assets
