@@ -11,6 +11,10 @@ dependencies = [
     "accelerate==1.0.0",
     "datasets==3.0.1",
 
+    # --------- flow matching --------- #
+    "torchdiffeq",
+    "flow_matching",
+
     # --------- loggers --------- #
     "tensorboard",
 

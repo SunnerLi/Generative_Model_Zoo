@@ -11,7 +11,7 @@
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Example Badge">
 </div>
 
-This repository provides unified framework to train common un-conditional generative models, including VAE, GAN and Diffusion model. 
+This repository provides unified framework to train common un-conditional generative models, including VAE, GAN, Diffusion model and flow matching. 
 
 ### Install
 * Virtual environment: Use [uv](https://github.com/astral-sh/uv) to create environment and install packages. Change `gai-zoo` as any name you want.
@@ -41,7 +41,10 @@ python3 src/eval.py
 * For advance, we use hydra to extend other various models, including AE, GAN and Diffusion model.
 ```shell
 # Train diffusion model
-python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=size_32_g
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=size_32_g   noise_scheduler=diffusion method=diffusion
+
+# Train flow matching model
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=size_32_g   noise_scheduler=fm        method=euler
 
 # Train GAN
 python3 hydra_wrapper.py --task train optimizer=style-gan loss=lsgan     model=size_32_g_d ++noise_scheduler=null
@@ -53,5 +56,5 @@ python3 hydra_wrapper.py --task train optimizer=diffusion loss=ae        model=s
 python3 hydra_wrapper.py --task train optimizer=diffusion loss=vae       model=size_32_g_b ++noise_scheduler=null model.G.out_channels=2 +model.sample_G=reparam
 
 # Sampling for MNIST diffusion model via hydra
-python3 hydra_wrapper.py --task eval grid=1
+python3 hydra_wrapper.py --task eval grid=1 +model.sample_G=q_sample
 ```

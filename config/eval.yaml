@@ -2,10 +2,11 @@ project_name: MNIST
 
 defaults:
   - _self_
-  - model: g
+  - model: size_32_g
   - loss: diffusion
+  - noise_scheduler: diffusion
 
-num_sample: 16
+num_sample: 64
 
 grid: False
 
@@ -26,11 +27,9 @@ data:
       - _target_: torchvision.transforms.Normalize
         mean: [0.1307]
         std: [0.3081]
-  batch_size: 8
+  batch_size: 64
 
 hydra:
   output_subdir: null
 
-noise_scheduler:
-  _target_: diffusers.DDPMScheduler
-  num_train_timesteps: 1000
+method: diffusion # diffusion | euler

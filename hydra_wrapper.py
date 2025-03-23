@@ -53,6 +53,7 @@ def train_by_config(cfg: DictConfig):
         lambda_vlb_b=cfg.loss.get("lambda_vlb_b", 0.0),
         lambda_gp=cfg.loss.get("lambda_gp", 0.0),
         noise_scheduler=cfg.get("noise_scheduler", None), 
+        method=cfg.get("method", "diffusion"), 
     )
 
 @hydra.main(version_base="1.3", config_path="./config", config_name="eval.yaml")
@@ -62,12 +63,14 @@ def eval_by_config(cfg: DictConfig):
         output_dir = cfg.paths.output_dir,
         G=cfg.model.G,
         B=cfg.model.get("B", None),
+        sample_G=cfg.model.get("sample_G", None),
         model_G_path=cfg.paths.model_G_path,
         model_B_path=cfg.paths.get("model_B_path", None),
         dataset_path=cfg.data.dataset_path, 
         preprocess=cfg.data.preprocess, 
         batch_size=cfg.data.batch_size,
         noise_scheduler=cfg.get("noise_scheduler", None), 
+        method=cfg.get("method", "diffusion"), 
         num_sample=cfg.get("num_sample", 16),
         grid=cfg.get("grid", False),
     )

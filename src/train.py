@@ -15,6 +15,7 @@ root_path = rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpat
 from src.data import build_data_loader
 from src.eval import evaluate
 from src.loss import WGANLoss
+from src.lr_scheduler import build_lr_scheduler
 from src.utils import (
     q_sample, q_rev_sample, reparam_trick, no_sample, 
     set_seed, 
@@ -31,13 +32,6 @@ def build_optimizer(optimizer_cls, params, lr, betas, weight_decay):
     else:
         optim = optimizer_cls(params, lr=lr, betas=betas, weight_decay=weight_decay)
     return optim
-
-def build_lr_scheduler(lr_scheduler_cls, optim, T_max):
-    if isinstance(lr_scheduler_cls, str):
-        module_name, class_name = lr_scheduler_cls.rsplit('.', 1)
-        lr_scheduler_cls = getattr(importlib.import_module(module_name), class_name)
-    lr_scheduler = lr_scheduler_cls(optim, T_max=T_max)
-    return lr_scheduler
 
 def train(
     # --- paths --- 
@@ -79,6 +73,7 @@ def train(
     lambda_gp: float = 0.0,
     # --- noise scheduler ---
     noise_scheduler = DDPMScheduler(1000),  # or None
+    method: str = "diffusion",    # diffusion | euler
 ):
     set_seed(seed)
     os.makedirs(model_dir, exist_ok=True)
@@ -130,15 +125,13 @@ def train(
         for batch_idx, input in enumerate(loader):
             x = input['image']
             eval_z = torch.randn_like(x, device=device) if eval_z is None else eval_z
-            # eval_z = torch.randn(x.shape[0], 100, device=x.device)
             loss0 = torch.zeros((1,), device=device)
             loss_g, loss_d = loss0.clone(), loss0.clone()
             loss_dict, sample_dict = {}, {}
 
             # Sample timestamp. Set as zero if train w/o diffusion
             if noise_scheduler:
-                num_train_timesteps = 2 * noise_scheduler.timesteps[0] - noise_scheduler.timesteps[1]
-                timesteps = torch.randint(0, num_train_timesteps, (x.shape[0],), device=device)
+                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (x.shape[0],), device=device)
                 timesteps_prev = noise_scheduler.previous_timestep(timesteps)
             else:
                 timesteps = torch.ones(x.shape[0], device=device)
@@ -146,10 +139,9 @@ def train(
 
             # Prepare generator input/target. target is None for GAN since GAN does not perform regression
             noise = torch.randn_like(x)
-            # noise = torch.randn(x.shape[0], 100, device=x.device)
-            in_g  = noise_scheduler.add_noise(x, noise, timesteps) if noise_scheduler else x if B is not None else noise
-            sam_d = noise_scheduler.add_noise(x, noise, timesteps_prev) if noise_scheduler else x
-            sample_dict.update({"in_g": in_g, "sam_d": sam_d, "noise": noise})
+            in_g, tar_g = noise_scheduler.add_noise(x, noise, timesteps) if noise_scheduler else x if B is not None else noise
+            sam_d, _    = noise_scheduler.add_noise(x, noise, timesteps_prev) if noise_scheduler else x
+            sample_dict.update({"in_g": in_g, "sam_d": sam_d, "tar_g": tar_g})
 
             # Perform forward & backward
             with accelerator.accumulate([module for module in [G, D, B] if module is not None]):
@@ -226,7 +218,7 @@ def train(
                         
                 # Backward and update Generator
                 optim_g.zero_grad()
-                loss_dict_G["L_diff"]  = lambda_diff * crit_diff(out_g, noise) if crit_diff and lambda_diff else loss0
+                loss_dict_G["L_diff"]  = lambda_diff * crit_diff(out_g, tar_g) if crit_diff and lambda_diff else loss0
                 loss_dict_G["L_rec"]   = lambda_rec * crit_rec(rev_b, in_g) if crit_rec and lambda_rec else loss0
                 loss_dict_G["L_g_vlb"] = lambda_vlb_g * crit_vlb(out_g) if crit_vlb and lambda_vlb_g else loss0
                 loss_dict_G["L_b_vlb"] = lambda_vlb_b * crit_vlb(out_b) if crit_vlb and lambda_vlb_b else loss0
@@ -254,7 +246,8 @@ def train(
                 save_figure(accelerator, sample_dict, epoch)
 
         # Sampling with fixed z and store image/weight
-        save_figure(accelerator, {"fix_z_sample": evaluate(G=G, B=B, noise_scheduler=noise_scheduler, noise=eval_z)}, epoch)
+        eval_img = evaluate(G=G, B=B, noise_scheduler=noise_scheduler, noise=eval_z, sample_G=sample_G, method=method)
+        save_figure(accelerator, {"fix_z_sample": eval_img}, epoch)
         if epochs < epochs_save_weight or (epoch+1) % epochs_save_weight == 0:
             accelerator.wait_for_everyone()
             save_model(model=G, path=os.path.join(model_dir, f"G_{epoch+1:04d}.pth"))

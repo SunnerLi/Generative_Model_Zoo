@@ -2,7 +2,7 @@ G:
   _target_: diffusers.UNet2DModel
   sample_size: 32
   in_channels: 1
-  out_channels: 1
+  out_channels: 1     # VAE: 2 | AE: 1
   block_out_channels:
     - 128
     - 128

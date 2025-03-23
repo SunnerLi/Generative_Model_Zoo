@@ -1,0 +1,2 @@
+_target_: src.noise_scheduler.DDPMScheduler
+num_train_timesteps: 1000

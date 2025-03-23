@@ -5,6 +5,7 @@ defaults:
   - model: g
   - loss: diffusion
   - optimizer: diffusion
+  - noise_scheduler: diffusion
 
 paths:
   root_dir: ${oc.env:PROJECT_ROOT}
@@ -35,6 +36,4 @@ hydra:
   run:
     dir: ${paths.output_dir}/${now:%Y-%m-%d}_${now:%H-%M-%S}
 
-noise_scheduler:
-  _target_: diffusers.DDPMScheduler
-  num_train_timesteps: 1000
+method: diffusion # diffusion | euler

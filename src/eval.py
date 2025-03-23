@@ -6,7 +6,6 @@ import torch
 import omegaconf
 from accelerate import Accelerator
 from diffusers import DDPMScheduler, UNet2DModel
-from hydra import compose, initialize
 from hydra.utils import instantiate
 from tqdm import tqdm
 from torchvision import transforms
@@ -16,35 +15,47 @@ from torchvision.utils import make_grid, save_image
 root_path = rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
 
 from src.data import build_data_loader
+from src.solver import odeint
 
-def evaluate(G, B, noise_scheduler, noise: torch.Tensor):
-    """Core evaluate function to perform inference. 
-    We only use B to generate sample in VAE case (B is existed & no noise scheduler)
-    otherwise, we use G to generate sample.
-    """
+def evaluate(G, B, noise_scheduler, noise: torch.Tensor, sample_G: str = None, method: str = "ddpm", return_intermediates: bool = False):
     input = noise
     with torch.no_grad():
         if noise_scheduler:
-            for t in noise_scheduler.timesteps:
-                noise_pred = G(input, t).sample
-                input = noise_scheduler.step(noise_pred, t, input).prev_sample
+            def ode_func(t, input):
+                noise_pred = G(input, t * noise_scheduler.num_train_timesteps).sample
+                if sample_G == "q_sample":
+                    input = noise_scheduler.step(noise_pred, t, input).prev_sample
+                elif sample_G is None or sample_G == "reparam":
+                    input = noise_pred
+                else:
+                    raise NotImplementedError()
+                return input
+            
+            output = odeint(ode_func, y0=input, t=noise_scheduler.timesteps/noise_scheduler.num_train_timesteps, method=method)
+
+            if return_intermediates:
+                return output
+            else:
+                return output[-1]
         else:
             if B:
                 input = B(input, torch.zeros(input.shape[0], device=input.device)).sample
             else:
                 input = G(input, torch.zeros(input.shape[0], device=input.device)).sample
-    return input
+        return output
 
 def eval(
     output_dir: str = "./output/sample",
     G = UNet2DModel(32, 1, 1),
     B = None,
+    sample_G = None,    # None | q_sample | reparam
     model_G_path: str = "./output/model/G_0001.pth",
     model_B_path: str = None,
     dataset_path: str = "ylecun/mnist",
     preprocess = transforms.Compose([transforms.Resize((32,32)), transforms.ToTensor(), transforms.Normalize([0.1307], [0.3081])]),
     batch_size: int = 8,
     noise_scheduler = DDPMScheduler(10),
+    method: str = "ddpm",   # ddpm | euler
     num_sample: int = 16,
     grid: bool = True,
 ):
@@ -73,7 +84,7 @@ def eval(
     image_golden = next(iter(loader))['image']
     for sample_idx in tqdm(range(0, num_sample, batch_size)):
         noise = torch.randn_like(image_golden, device=device)
-        image = evaluate(G=G, B=B, noise_scheduler=noise_scheduler, noise=noise)
+        image = evaluate(G=G, B=B, noise_scheduler=noise_scheduler, noise=noise, sample_G=sample_G, method=method)
 
         # Save to disk
         if grid:
