@@ -8,6 +8,7 @@ from accelerate import Accelerator
 from diffusers import DDPMScheduler, UNet2DModel
 from itertools import chain
 from torchvision import transforms
+from torch.optim import Optimizer, AdamW, lr_scheduler
 from tqdm import tqdm
 
 root_path = rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
@@ -35,45 +36,45 @@ def build_optimizer(optimizer_cls, params, lr, betas, weight_decay):
 
 def train(
     # --- paths --- 
-    model_dir: str = "./output/model",
-    log_dir: str = "./logs",
+    model_dir: str = "./output/model",      # The folder path where the models are stored in.
+    log_dir: str = "./logs",                # The folder path where log & tfboard are stored in.
     # --- data --- 
-    dataset_path : str = "ylecun/mnist",
+    dataset_path : str = "ylecun/mnist",    # Path or name of the dataset. Please refer to HF dataset.load_dataset().
     preprocess = transforms.Compose([transforms.Resize((32,32)), transforms.ToTensor(), transforms.Normalize([0.1307], [0.3081])]),
-    batch_size: int = 4,
+    batch_size: int = 4,                    # Batch size in single forward/backward process.
     # --- model ---
-    G = UNet2DModel(32, 1, 1),
-    B = None,
-    D = None,
-    sample_G = None,    # None | q_sample | reparam
-    sample_B = None,    # None | q_rev_sample
+    G = UNet2DModel(32, 1, 1),              # Generator model.
+    B = None,                               # Decoder model.
+    D = None,                               # Discriminator model.
+    sample_G = None,                        # Sample method after Generator. None | q_sample | reparam
+    sample_B = None,                        # Sample method after Decoder. None | q_rev_sample
     # --- accelerator ---
-    project_name: str = "MNIST",
-    gradient_accumulation_steps: int = 4,
+    project_name: str = "MNIST",            # Tfboard project name.
+    gradient_accumulation_steps: int = 4,   # The number of steps that should pass before gradients are accumulated.
     # --- trainer ---
-    optimizer_cls = torch.optim.AdamW,
-    betas = (0.9, 0.999),
-    lr_g: float = 0.0002,
-    lr_d: float = 0.0002,
-    weight_decay: float = 0.01,
-    lr_scheduler_cls = torch.optim.lr_scheduler.CosineAnnealingLR,
-    epochs: int = 1,
-    epochs_save_weight: int = 50,
-    seed: int = 0,
+    optimizer_cls: Optimizer = AdamW,       # Type of optimizer.
+    betas = (0.9, 0.999),                   # Coefficients used for computing running averages of gradient and its square.
+    lr_g: float = 0.0002,                   # Learning rate of Generator
+    lr_d: float = 0.0002,                   # Learning rate of Discriminator
+    weight_decay: float = 0.01,             # Weight decay coefficient
+    lr_scheduler_cls = lr_scheduler.CosineAnnealingLR,
+    epochs: int = 1,                        # Total training epochs
+    epochs_save_weight: int = 50,           # How often are the model parameters saved
+    seed: int = 0,                          # Random seed
     # --- loss ---
-    crit_rec = None,
-    crit_gan = None,
-    crit_diff = torch.nn.MSELoss(),
-    crit_vlb = None,
-    lambda_rec: float = 0.0,
-    lambda_gan: float = 0.0,
-    lambda_diff: float = 1.0,
-    lambda_vlb_g: float = 0.0,
-    lambda_vlb_b: float = 0.0,
-    lambda_gp: float = 0.0,
+    crit_rec = None,                        # Criterion of reconstruction loss
+    crit_gan = None,                        # Criterion of adversarial loss. Used in GAN
+    crit_diff = torch.nn.MSELoss(),         # Criterion of diffusion regression loss. Used in diffusion / flow matching
+    crit_vlb = None,                        # Criterion of variation lower bound loss. Used in VAE
+    lambda_rec: float = 0.0,                # Loss term weight of reconstruction loss
+    lambda_gan: float = 0.0,                # Loss term weight of adversarial loss
+    lambda_diff: float = 1.0,               # Loss term weight of diffusion regression loss.
+    lambda_vlb_g: float = 0.0,              # Loss term weight of variation lower bound loss after generator.
+    lambda_vlb_b: float = 0.0,              # Loss term weight of variation lower bound loss after decoder.
+    lambda_gp: float = 0.0,                 # Loss term weight of gradient panelty. 
     # --- noise scheduler ---
-    noise_scheduler = DDPMScheduler(1000),  # or None
-    method: str = "diffusion",    # diffusion | euler
+    noise_scheduler = DDPMScheduler(1000),  # Noise scheduler object. Used in diffusion / floa matching. Set None in other cases.
+    method: str = "diffusion",              # Numerical method for sampling. diffusion | euler
 ):
     set_seed(seed)
     os.makedirs(model_dir, exist_ok=True)
@@ -106,10 +107,7 @@ def train(
     B = B.train() if B is not None else B
 
     # Set accelerator (GPU training/logger) and prepare
-    accelerator = Accelerator(
-        gradient_accumulation_steps=gradient_accumulation_steps, 
-        log_with=["tensorboard"], project_dir=log_dir
-    )
+    accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps, log_with=["tensorboard"], project_dir=log_dir)
     accelerator.init_trackers(project_name, config=params)    
     G, B, D = accelerator.prepare(G, B, D)
     loader, optim_g, optim_d = accelerator.prepare(loader, optim_g, optim_d)
