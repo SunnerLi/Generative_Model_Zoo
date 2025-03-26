@@ -1,2 +1,4 @@
-_target_: src.noise_scheduler.DDPMScheduler
+# Please refer to src.noise_scheduler for selection. DDPMScheduler | DDIMScheduler
+noise_scheduler_cls: src.noise_scheduler.DDPMScheduler
 num_train_timesteps: 1000
+num_inference_steps: 1000

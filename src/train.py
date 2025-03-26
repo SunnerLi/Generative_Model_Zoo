@@ -5,7 +5,7 @@ import fire
 import rootutils
 import torch
 from accelerate import Accelerator
-from diffusers import DDPMScheduler, UNet2DModel
+from diffusers import UNet2DModel
 from itertools import chain
 from torchvision import transforms
 from torch.optim import Optimizer, AdamW, lr_scheduler
@@ -17,6 +17,7 @@ from src.data import build_data_loader
 from src.eval import evaluate
 from src.loss import WGANLoss
 from src.lr_scheduler import build_lr_scheduler
+from src.noise_scheduler import build_noise_scheduler, DDPMScheduler
 from src.utils import (
     q_sample, q_rev_sample, reparam_trick, no_sample, 
     set_seed, 
@@ -73,7 +74,8 @@ def train(
     lambda_vlb_b: float = 0.0,              # Loss term weight of variation lower bound loss after decoder.
     lambda_gp: float = 0.0,                 # Loss term weight of gradient panelty. 
     # --- noise scheduler ---
-    noise_scheduler = DDPMScheduler(1000),  # Noise scheduler object. Used in diffusion / floa matching. Set None in other cases.
+    noise_scheduler_cls = DDPMScheduler,    # Noise scheduler object. Used in diffusion / floa matching. Set None in other cases.
+    num_train_timesteps: int = 1000,        # The number of diffusion steps to train the model.
     method: str = "diffusion",              # Numerical method for sampling. diffusion | euler
 ):
     set_seed(seed)
@@ -85,7 +87,7 @@ def train(
     criterions = [crit_rec, crit_gan, crit_diff, crit_vlb]
     crit_rec, crit_gan, crit_diff, crit_vlb = [instantiate(crit) for crit in criterions]
     G, B, D = [instantiate(model) for model in [G, B, D]]
-    noise_scheduler = instantiate(noise_scheduler)
+    noise_scheduler = build_noise_scheduler(noise_scheduler_cls, num_train_timesteps)
     optim_g = optim_d = None
 
     # Initialize generator parameters. Use orthogonal since we use SiLU in all models
@@ -115,7 +117,7 @@ def train(
     device = accelerator.device
 
     # ========== Training ==========
-    global_step, eval_z = 0, None
+    global_step, eval_z, _ = 0, None, 0
     for epoch in range(epochs):
         progress_bar = tqdm(loader, total=len(loader), disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
@@ -137,8 +139,8 @@ def train(
 
             # Prepare generator input/target. target is None for GAN since GAN does not perform regression
             noise = torch.randn_like(x)
-            in_g, tar_g = noise_scheduler.add_noise(x, noise, timesteps) if noise_scheduler else x if B is not None else noise
-            sam_d, _    = noise_scheduler.add_noise(x, noise, timesteps_prev) if noise_scheduler else x
+            in_g, tar_g = noise_scheduler.add_noise(x, noise, timesteps) if noise_scheduler else (x, noise) if B is not None else (noise, None)
+            sam_d, _    = noise_scheduler.add_noise(x, noise, timesteps_prev) if noise_scheduler else (x, _)
             sample_dict.update({"in_g": in_g, "sam_d": sam_d, "tar_g": tar_g})
 
             # Perform forward & backward

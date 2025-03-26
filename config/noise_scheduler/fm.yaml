@@ -1,2 +1,2 @@
-_target_: src.noise_scheduler.AffineOTProbPathScheduler
+noise_scheduler_cls: src.noise_scheduler.AffineOTProbPathScheduler
 num_train_timesteps: 1000

@@ -15,15 +15,32 @@ from torchvision.utils import make_grid, save_image
 root_path = rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
 
 from src.data import build_data_loader
+from src.noise_scheduler import build_noise_scheduler
 from src.solver import odeint
 
-def evaluate(G, B, noise_scheduler, noise: torch.Tensor, sample_G: str = None, method: str = "ddpm", return_intermediates: bool = False):
+def evaluate(
+    G, 
+    B, 
+    noise_scheduler, 
+    noise: torch.Tensor, 
+    sample_G: str = None, 
+    method: str = "diffusion", 
+    return_intermediates: bool = False
+):
+    """Core function of evaluation. """
     input = noise
     with torch.no_grad():
+        
+        # ========== Diffusion model & flow matching sampling logic ==========
         if noise_scheduler:
+            num_train_timesteps = noise_scheduler.config.num_train_timesteps
+
             def ode_func(t, input):
-                noise_pred = G(input, t * noise_scheduler.num_train_timesteps).sample
+                noise_pred = G(input, t * num_train_timesteps).sample
                 if sample_G == "q_sample":
+                    # Note: diffuser scheduler timestep is integer; while torchdiffeq timestep is float
+                    if method == "diffusion":
+                        t = (t * num_train_timesteps).long()
                     input = noise_scheduler.step(noise_pred, t, input).prev_sample
                 elif sample_G is None or sample_G == "reparam":
                     input = noise_pred
@@ -31,12 +48,14 @@ def evaluate(G, B, noise_scheduler, noise: torch.Tensor, sample_G: str = None, m
                     raise NotImplementedError()
                 return input
             
-            output = odeint(ode_func, y0=input, t=noise_scheduler.timesteps/noise_scheduler.num_train_timesteps, method=method)
+            output = odeint(ode_func, y0=input, t=noise_scheduler.timesteps/num_train_timesteps, method=method)
 
             if return_intermediates:
                 return output
             else:
                 return output[-1]
+            
+        # ========== GAN & VAE sampling logic ==========
         else:
             if B:
                 input = B(input, torch.zeros(input.shape[0], device=input.device)).sample
@@ -54,15 +73,18 @@ def eval(
     dataset_path: str = "ylecun/mnist",
     preprocess = transforms.Compose([transforms.Resize((32,32)), transforms.ToTensor(), transforms.Normalize([0.1307], [0.3081])]),
     batch_size: int = 8,
-    noise_scheduler = DDPMScheduler(10),
-    method: str = "ddpm",   # ddpm | euler
+    noise_scheduler_cls = DDPMScheduler,
+    num_train_timesteps: int = 1000,
+    num_inference_steps: int = 1000,
+    method: str = "diffusion",   # diffusion | euler
     num_sample: int = 16,
     grid: bool = True,
 ):
     os.makedirs(output_dir, exist_ok=True)
 
-    # Define dataloader/optimizer/lr scheduler/noise scheduler
+    # Define dataloader/noise scheduler
     loader = build_data_loader(dataset_path, preprocess, batch_size, split="test")
+    noise_scheduler = build_noise_scheduler(noise_scheduler_cls, num_train_timesteps)
 
     # Load pre-trained model
     G = instantiate(G) if isinstance(G, omegaconf.DictConfig) else G
@@ -71,8 +93,10 @@ def eval(
         B = instantiate(B) if isinstance(B, omegaconf.DictConfig) else B
         B.load_state_dict(torch.load(model_B_path, weights_only=True))
 
+    # Define noise scheduler
     if noise_scheduler is not None:
-        noise_scheduler = instantiate(noise_scheduler) if isinstance(noise_scheduler, omegaconf.DictConfig) else noise_scheduler
+        noise_scheduler = build_noise_scheduler(noise_scheduler_cls, num_train_timesteps)
+        noise_scheduler.set_timesteps(num_inference_steps)
 
     # Set accelerator (GPU inference)
     accelerator = Accelerator()

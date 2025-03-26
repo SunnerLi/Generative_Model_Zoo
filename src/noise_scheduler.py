@@ -3,7 +3,21 @@
 from flow_matching.path import CondOTProbPath
 from typing import Tuple
 import diffusers
+import importlib
 import torch
+
+
+def build_noise_scheduler(
+    noise_scheduler_cls, num_train_timesteps: int = 1000, *args, **kwargs
+):
+    if noise_scheduler_cls is not None:
+        if isinstance(noise_scheduler_cls, str):
+            module_name, class_name = noise_scheduler_cls.rsplit(".", 1)
+            noise_scheduler_cls = getattr(
+                importlib.import_module(module_name), class_name
+            )
+        noise_scheduler = noise_scheduler_cls(num_train_timesteps, *args, **kwargs)
+    return noise_scheduler
 
 
 # ====================== Diffusion scheduler ======================
@@ -13,7 +27,7 @@ class DDPMScheduler(diffusers.DDPMScheduler):
         self.num_train_timesteps = 2 * self.timesteps[0] - self.timesteps[1]
 
     def add_noise(
-        self, noise, *args, **kwargs
+        self, original_samples, noise, timesteps, *args, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Generate sample x_t ~ q(x_t|x_0)
 
@@ -22,7 +36,7 @@ class DDPMScheduler(diffusers.DDPMScheduler):
             noise: The target which model need to learn.
         """
 
-        x_t = super().add_noise(noise=noise, *args, **kwargs)
+        x_t = super().add_noise(original_samples, noise, timesteps, *args, **kwargs)
         return x_t, noise
 
 
@@ -32,7 +46,7 @@ class DDIMScheduler(diffusers.DDIMScheduler):
         self.num_train_timesteps = 2 * self.timesteps[0] - self.timesteps[1]
 
     def add_noise(
-        self, noise, *args, **kwargs
+        self, original_samples, noise, timesteps, *args, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Generate sample x_t ~ q(x_t|x_0)
 
@@ -40,7 +54,7 @@ class DDIMScheduler(diffusers.DDIMScheduler):
             x_t: Sample in time t.
             noise: The target which model need to learn.
         """
-        x_t = super().add_noise(noise=noise, *args, **kwargs)
+        x_t = super().add_noise(original_samples, noise, timesteps, *args, **kwargs)
         return x_t, noise
 
 
@@ -69,6 +83,10 @@ class AffineOTProbPathScheduler(CondOTProbPath):
             noise, original_samples, timesteps / self.num_train_timesteps
         )
         return path_sample.x_t, path_sample.dx_t
+
+    def set_timesteps(self, num_inference_steps: int, *args, **kwargs):
+        # Dummy function. We do not use this API to set timesteps in flow matching
+        pass
 
     def previous_timestep(self, timestep):
         return timestep - 1

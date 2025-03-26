@@ -52,7 +52,8 @@ def train_by_config(cfg: DictConfig):
         lambda_vlb_g=cfg.loss.get("lambda_vlb_g", 0.0),
         lambda_vlb_b=cfg.loss.get("lambda_vlb_b", 0.0),
         lambda_gp=cfg.loss.get("lambda_gp", 0.0),
-        noise_scheduler=cfg.get("noise_scheduler", None), 
+        noise_scheduler_cls=cfg.get("noise_scheduler", None), 
+        num_train_timesteps=cfg.noise_scheduler.get("num_train_timesteps") if cfg.get("noise_scheduler", False) else 1000,
         method=cfg.get("method", "diffusion"), 
     )
 
@@ -72,6 +73,9 @@ def eval_by_config(cfg: DictConfig):
         noise_scheduler=cfg.get("noise_scheduler", None), 
         method=cfg.get("method", "diffusion"), 
         num_sample=cfg.get("num_sample", 16),
+        noise_scheduler_cls=cfg.get("noise_scheduler", None), 
+        num_train_timesteps=cfg.noise_scheduler.get("num_train_timesteps") if cfg.get("noise_scheduler", False) else 1000,
+        num_inference_steps=cfg.noise_scheduler.get("num_inference_steps") if cfg.get("noise_scheduler", False) else 1000,
         grid=cfg.get("grid", False),
     )
 
