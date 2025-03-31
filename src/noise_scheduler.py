@@ -1,4 +1,15 @@
-"""This script defines noise schedulers which will be used in diffusion model & flow matching"""
+"""This script defines noise schedulers which will be used in diffusion model & flow matching
+Currently we provide the schedulers. Please fill the class name into noise_scheduler YAML:
+
+    # Diffusion model
+    1. src.noise_scheduler.DDPMScheduler
+    2. src.noise_scheduler.DDIMScheduler
+    3. src.noise_scheduler.DPMSolverSinglestepScheduler
+    4. src.noise_scheduler.DPMSolverMultistepScheduler
+
+    # Flow matching
+    5. src.noise_scheduler.AffineOTProbPathScheduler
+"""
 
 from flow_matching.path import CondOTProbPath
 from typing import Tuple
@@ -16,46 +27,48 @@ def build_noise_scheduler(
             noise_scheduler_cls = getattr(
                 importlib.import_module(module_name), class_name
             )
-        noise_scheduler = noise_scheduler_cls(num_train_timesteps, *args, **kwargs)
+        noise_scheduler = noise_scheduler_cls(
+            num_train_timesteps, *args, **kwargs
+        )
     return noise_scheduler
 
 
 # ====================== Diffusion scheduler ======================
-class DDPMScheduler(diffusers.DDPMScheduler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.num_train_timesteps = 2 * self.timesteps[0] - self.timesteps[1]
+def create_custom_scheduler_class(name, base_class):
+    """Create custom scheduler to adapt torchdiffeq API"""
 
-    def add_noise(
-        self, original_samples, noise, timesteps, *args, **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        r"""Generate sample x_t ~ q(x_t|x_0)
+    class CustomScheduler(base_class):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.num_train_timesteps = 2 * self.timesteps[0] - self.timesteps[1]
 
-        Returns:
-            x_t: Sample in time t.
-            noise: The target which model need to learn.
-        """
+        def add_noise(
+            self, original_samples, noise, timesteps, *args, **kwargs
+        ) -> tuple[torch.Tensor, torch.Tensor]:
+            r"""Generate sample x_t ~ q(x_t|x_0)
 
-        x_t = super().add_noise(original_samples, noise, timesteps, *args, **kwargs)
-        return x_t, noise
+            Returns:
+                x_t: Sample in time t.
+                noise: The target which model need to learn.
+            """
+            x_t = super().add_noise(
+                original_samples, noise, timesteps, *args, **kwargs
+            )
+            return x_t, noise
+
+    CustomScheduler.__name__ = name
+    return CustomScheduler
 
 
-class DDIMScheduler(diffusers.DDIMScheduler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.num_train_timesteps = 2 * self.timesteps[0] - self.timesteps[1]
-
-    def add_noise(
-        self, original_samples, noise, timesteps, *args, **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        r"""Generate sample x_t ~ q(x_t|x_0)
-
-        Returns:
-            x_t: Sample in time t.
-            noise: The target which model need to learn.
-        """
-        x_t = super().add_noise(original_samples, noise, timesteps, *args, **kwargs)
-        return x_t, noise
+# Register custom scheduler by original name
+for name in [
+    "DDPMScheduler",
+    "DDIMScheduler",
+    "DPMSolverSinglestepScheduler",
+    "DPMSolverMultistepScheduler",
+]:
+    base_class = getattr(diffusers, name)
+    globals()[name] = create_custom_scheduler_class(name, base_class)
 
 
 # ====================== Flow matching scheduler ======================
