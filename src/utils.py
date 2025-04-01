@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import random
 import numpy as np
 import hydra
@@ -25,7 +26,7 @@ def instantiate(config: DictConfig | None):
         return config
     
 def initial_orthogonal(m):
-    if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear) or isinstance(m, nn.Embedding):
         torch.nn.init.orthogonal_(m.weight)
 
 # ==================== Sampling ====================
@@ -72,6 +73,8 @@ def save_model(model, path):
 def save_figure(accelerator, name_image_pair: dict = {}, global_step: int = 0):
     for name, image in name_image_pair.items():
         if image is not None:
+            # Get first 3 channel for visualization
+            image = image[:, :3, ...]
             accelerator.get_tracker("tensorboard").writer.add_image(
                 name, 
                 make_grid(image), 

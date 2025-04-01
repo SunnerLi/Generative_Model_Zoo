@@ -21,17 +21,20 @@ import torch
 def build_noise_scheduler(
     noise_scheduler_cls, num_train_timesteps: int = 1000, *args, **kwargs
 ):
-    if noise_scheduler_cls is not None:
-        if isinstance(noise_scheduler_cls, str):
+    if noise_scheduler_cls is None:
+        return None
+    
+    if isinstance(noise_scheduler_cls, str):
+        try:
             module_name, class_name = noise_scheduler_cls.rsplit(".", 1)
-            noise_scheduler_cls = getattr(
-                importlib.import_module(module_name), class_name
-            )
-        noise_scheduler = noise_scheduler_cls(
-            num_train_timesteps, *args, **kwargs
-        )
-    return noise_scheduler
+            noise_scheduler_cls = getattr(importlib.import_module(module_name), class_name)
+        except (ValueError, AttributeError, ModuleNotFoundError) as e:
+            raise ImportError(f"Failed to import scheduler class '{noise_scheduler_cls}': {e}")
+        
+    if not callable(noise_scheduler_cls):
+        raise TypeError(f"noise_scheduler_cls must be a class or a string referring to a class, got {type(noise_scheduler_cls)}")
 
+    return noise_scheduler_cls(num_train_timesteps, *args, **kwargs)
 
 # ====================== Diffusion scheduler ======================
 def create_custom_scheduler_class(name, base_class):
