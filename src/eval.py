@@ -20,6 +20,7 @@ from src.solver import odeint
 
 def evaluate(
     G, 
+    Q,
     B, 
     noise_scheduler, 
     noise: torch.Tensor, 
@@ -55,20 +56,25 @@ def evaluate(
             else:
                 return output[-1]
             
-        # ========== GAN & VAE sampling logic ==========
+        # ========== GAN / VAE / VQVAE sampling logic ==========
         else:
+            _t = torch.zeros(input.shape[0], device=input.device)
             if B:
-                input = B(input, torch.zeros(input.shape[0], device=input.device)).sample
+                if Q:
+                    input, _ = Q(input)
+                output = B(input, _t).sample
             else:
-                input = G(input, torch.zeros(input.shape[0], device=input.device)).sample
+                output = G(input, _t).sample
         return output
 
 def eval(
     output_dir: str = "./output/sample",
     G = UNet2DModel(32, 1, 1),
+    Q = None,
     B = None,
     sample_G = None,    # None | q_sample | reparam
     model_G_path: str = "./output/model/G_0001.pth",
+    model_Q_path: str = None,
     model_B_path: str = None,
     dataset_path: str = "ylecun/mnist",
     preprocess = transforms.Compose([transforms.Resize((32,32)), transforms.ToTensor(), transforms.Normalize([0.1307], [0.3081])]),
@@ -89,6 +95,9 @@ def eval(
     # Load pre-trained model
     G = instantiate(G) if isinstance(G, omegaconf.DictConfig) else G
     G.load_state_dict(torch.load(model_G_path, weights_only=True))
+    if Q:
+        Q = instantiate(Q) if isinstance(Q, omegaconf.DictConfig) else Q
+        Q.load_state_dict(torch.load(model_Q_path, weights_only=True))
     if B:
         B = instantiate(B) if isinstance(B, omegaconf.DictConfig) else B
         B.load_state_dict(torch.load(model_B_path, weights_only=True))
@@ -101,14 +110,17 @@ def eval(
     # Set accelerator (GPU inference)
     accelerator = Accelerator()
     loader, G = accelerator.prepare(loader, G)
+    Q = accelerator.prepare(Q) if Q else Q
     B = accelerator.prepare(B) if B else B
     device = accelerator.device
 
     # ========== Sampling ==========
     image_golden = next(iter(loader))['image']
     for sample_idx in tqdm(range(0, num_sample, batch_size)):
-        noise = torch.randn_like(image_golden, device=device)
-        image = evaluate(G=G, B=B, noise_scheduler=noise_scheduler, noise=noise, sample_G=sample_G, method=method)
+        noise_size = list(image_golden.shape)
+        noise_size[1] = Q.dim if Q else noise_size[1]
+        noise = torch.randn(noise_size, device=device)
+        image = evaluate(G=G, Q=Q, B=B, noise_scheduler=noise_scheduler, noise=noise, sample_G=sample_G, method=method)
 
         # Save to disk
         if grid:

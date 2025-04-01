@@ -14,6 +14,7 @@ paths:
   root_dir: ${oc.env:PROJECT_ROOT}
   output_dir: null
   model_G_path: null
+  model_Q_path: null
   model_B_path: null
 
 data:

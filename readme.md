@@ -41,19 +41,22 @@ python3 src/eval.py
 * For advance, we use hydra to extend other various models, including AE, GAN and Diffusion model.
 ```shell
 # Train diffusion model
-python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=size_32_g   noise_scheduler=diffusion method=diffusion
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=size_32_g     noise_scheduler=diffusion method=diffusion
 
 # Train flow matching model
-python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=size_32_g   noise_scheduler=fm        method=euler
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=diffusion model=size_32_g     noise_scheduler=fm        method=euler
 
 # Train GAN
-python3 hydra_wrapper.py --task train optimizer=style-gan loss=lsgan     model=size_32_g_d ++noise_scheduler=null
+python3 hydra_wrapper.py --task train optimizer=style-gan loss=lsgan     model=size_32_g_d   '~noise_scheduler'
 
 # Train Auto-encoder
-python3 hydra_wrapper.py --task train optimizer=diffusion loss=ae        model=size_32_g_b ++noise_scheduler=null
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=ae        model=size_32_g_b   '~noise_scheduler'
 
 # Train VAE
-python3 hydra_wrapper.py --task train optimizer=diffusion loss=vae       model=size_32_g_b ++noise_scheduler=null model.G.out_channels=2 +model.sample_G=reparam
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=vae       model=size_32_g_b   '~noise_scheduler' model.G.out_channels=2 +model.sample_G=reparam
+
+# [Dev] Train VQVAE
+python3 hydra_wrapper.py --task train optimizer=diffusion loss=vqvae     model=size_32_g_q_b '~noise_scheduler'
 
 # Sampling for MNIST diffusion model via hydra
 python3 hydra_wrapper.py --task eval grid=1 +model.sample_G=q_sample

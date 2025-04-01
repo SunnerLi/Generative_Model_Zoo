@@ -45,6 +45,7 @@ def train(
     batch_size: int = 4,                    # Batch size in single forward/backward process.
     # --- model ---
     G = UNet2DModel(32, 1, 1),              # Generator model.
+    Q = None,                               # Vector quantizer model.
     B = None,                               # Decoder model.
     D = None,                               # Discriminator model.
     sample_G = None,                        # Sample method after Generator. None | q_sample | reparam
@@ -67,11 +68,13 @@ def train(
     crit_gan = None,                        # Criterion of adversarial loss. Used in GAN
     crit_diff = torch.nn.MSELoss(),         # Criterion of diffusion regression loss. Used in diffusion / flow matching
     crit_vlb = None,                        # Criterion of variation lower bound loss. Used in VAE
+    crit_vq = None,                         # Criterion of vector-quantize loss. Used in VQVAE
     lambda_rec: float = 0.0,                # Loss term weight of reconstruction loss
     lambda_gan: float = 0.0,                # Loss term weight of adversarial loss
     lambda_diff: float = 1.0,               # Loss term weight of diffusion regression loss.
     lambda_vlb_g: float = 0.0,              # Loss term weight of variation lower bound loss after generator.
     lambda_vlb_b: float = 0.0,              # Loss term weight of variation lower bound loss after decoder.
+    lambda_vq: float = 0.0,                 # # Loss term weight of vector-quantize loss.
     lambda_gp: float = 0.0,                 # Loss term weight of gradient panelty. 
     # --- noise scheduler ---
     noise_scheduler_cls = DDPMScheduler,    # Noise scheduler object. Used in diffusion / floa matching. Set None in other cases.
@@ -84,14 +87,15 @@ def train(
         
     # Instantiate dataloader/model/criterions/noise scheduler
     loader = build_data_loader(dataset_path, preprocess, batch_size, split="train")
-    criterions = [crit_rec, crit_gan, crit_diff, crit_vlb]
-    crit_rec, crit_gan, crit_diff, crit_vlb = [instantiate(crit) for crit in criterions]
-    G, B, D = [instantiate(model) for model in [G, B, D]]
+    criterions = [crit_rec, crit_gan, crit_diff, crit_vlb, crit_vq]
+    crit_rec, crit_gan, crit_diff, crit_vlb, crit_vq = [instantiate(crit) for crit in criterions]
+    G, Q, B, D = [instantiate(model) for model in [G, Q, B, D]]
     noise_scheduler = build_noise_scheduler(noise_scheduler_cls, num_train_timesteps)
     optim_g = optim_d = None
 
     # Initialize generator parameters. Use orthogonal since we use SiLU in all models
     G = G.apply(initial_orthogonal) if G else G
+    Q = Q.apply(initial_orthogonal) if Q else Q
     B = B.apply(initial_orthogonal) if B else B
     D = D.apply(initial_orthogonal) if D else D
 
@@ -102,18 +106,19 @@ def train(
         D.train()
 
     # Instantiate Generator optimizer & lr scheduler
-    ae_params = G.parameters() if B is None else chain(G.parameters(), B.parameters())
+    ae_params = chain(*(m.parameters() for m in (G, Q, B) if m is not None))
     optim_g = build_optimizer(optimizer_cls, ae_params, lr_g, betas, weight_decay)
     lr_scheduler_g = build_lr_scheduler(lr_scheduler_cls, optim_g, T_max=len(loader) * epochs)
     G = G.train()
+    Q = Q.train() if Q is not None else Q
     B = B.train() if B is not None else B
 
     # Set accelerator (GPU training/logger) and prepare
     accelerator = Accelerator(gradient_accumulation_steps=gradient_accumulation_steps, log_with=["tensorboard"], project_dir=log_dir)
     accelerator.init_trackers(project_name, config=params)    
-    G, B, D = accelerator.prepare(G, B, D)
+    G, Q, B, D = accelerator.prepare(G, Q, B, D)
     loader, optim_g, optim_d = accelerator.prepare(loader, optim_g, optim_d)
-    crit_rec, crit_gan, crit_diff, crit_vlb = accelerator.prepare(crit_rec, crit_gan, crit_diff, crit_vlb)
+    crit_rec, crit_gan, crit_diff, crit_vlb, crit_vq = accelerator.prepare(crit_rec, crit_gan, crit_diff, crit_vlb, crit_vq)
     device = accelerator.device
 
     # ========== Training ==========
@@ -124,7 +129,14 @@ def train(
 
         for batch_idx, input in enumerate(loader):
             x = input['image']
-            eval_z = torch.randn_like(x, device=device) if eval_z is None else eval_z
+
+            # Determine fixed z for evaluation
+            if eval_z is None:
+                if Q:
+                    eval_z = torch.randn(size=(batch_size, Q.dim, G.latent_size, G.latent_size), device=device)
+                else:
+                    eval_z = torch.randn_like(x, device=device)
+
             loss0 = torch.zeros((1,), device=device)
             loss_g, loss_d = loss0.clone(), loss0.clone()
             loss_dict, sample_dict = {}, {}
@@ -155,9 +167,10 @@ def train(
                     # Forward encoder-decoder
                     # Note: rev_b is used to compute t-1 adv loss; sam_b is used to compute t adv loss
                     out_g = G(in_g, timesteps).sample.detach()
+                    out_vq, _ = Q(out_g) if Q else (out_g, loss0)
                     in_b = {
                         "q_sample": q_sample, "reparam": reparam_trick
-                    }.get(sample_G, no_sample)(noise_scheduler, out_g, timesteps, x)
+                    }.get(sample_G, no_sample)(noise_scheduler, out_vq, timesteps, x)
                     out_b = B(in_b, timesteps).sample.detach() if B else in_b
                     sam_b = out_b if sample_B is None and B is None else None
                     rev_b = q_rev_sample(noise_scheduler, out_b, timesteps, x) if sample_B == "q_rev_sample" else None
@@ -197,9 +210,10 @@ def train(
                 # Forward encoder-decoder
                 # Note: Besides to compute adv loss, rev_b is also used to compute reconstruction loss
                 out_g = G(in_g, timesteps).sample
+                out_vq, vq_loss = Q(out_g) if Q else (out_g, loss0)
                 in_b = {
                     "q_sample": q_sample, "reparam": reparam_trick
-                }.get(sample_G, no_sample)(noise_scheduler, out_g, timesteps, x)
+                }.get(sample_G, no_sample)(noise_scheduler, out_vq, timesteps, x)
                 out_b = B(in_b, timesteps).sample if B else in_b
                 sam_b = out_b if sample_B is None and B is None else None
                 rev_b = out_b if crit_rec and lambda_rec else None
@@ -219,9 +233,10 @@ def train(
                 # Backward and update Generator
                 optim_g.zero_grad()
                 loss_dict_G["L_diff"]  = lambda_diff * crit_diff(out_g, tar_g) if crit_diff and lambda_diff else loss0
-                loss_dict_G["L_rec"]   = lambda_rec * crit_rec(rev_b, in_g) if crit_rec and lambda_rec else loss0
+                loss_dict_G["L_rec"]   = 1.0 * crit_rec(rev_b, in_g) if crit_rec and lambda_rec else loss0
                 loss_dict_G["L_g_vlb"] = lambda_vlb_g * crit_vlb(out_g) if crit_vlb and lambda_vlb_g else loss0
                 loss_dict_G["L_b_vlb"] = lambda_vlb_b * crit_vlb(out_b) if crit_vlb and lambda_vlb_b else loss0
+                loss_dict_G["L_vq"]    = lambda_vq * vq_loss if crit_vq and lambda_vq and Q else loss0
                 loss_g = sum(l for l in loss_dict_G.values())
                 accelerator.backward(loss_g)
                 grad_norm_g = accelerator.clip_grad_norm_(G.parameters(), max_norm=1.0)
@@ -246,7 +261,7 @@ def train(
                 save_figure(accelerator, sample_dict, epoch)
 
         # Sampling with fixed z and store image/weight
-        eval_img = evaluate(G=G, B=B, noise_scheduler=noise_scheduler, noise=eval_z, sample_G=sample_G, method=method)
+        eval_img = evaluate(G=G, Q=Q, B=B, noise_scheduler=noise_scheduler, noise=eval_z, sample_G=sample_G, method=method)
         save_figure(accelerator, {"fix_z_sample": eval_img}, epoch)
         if epochs < epochs_save_weight or (epoch+1) % epochs_save_weight == 0:
             accelerator.wait_for_everyone()

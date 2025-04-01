@@ -1,0 +1,18 @@
+# This is the model config YAML for VQVAE. 
+# We have tested to use diffusers UNet2DModel to act as VQVAE encoder-decoder structure.
+# However, we found training fail since spatial capacity is too large. (32x32 fail. Only 2x2 success in MNIST)
+# Additional experiments should be performed to adapt diffusers model into VQVAE.
+G:
+  _target_: src.model_vqvae.Encoder
+  e_dim: 1
+  latent_size: 2
+Q:
+  _target_: src.model_vqvae.VectorQuantizer
+  dim: 1
+  codebook_size: 32
+  commitment_weight: 0.25
+  rotation_trick: False
+B:
+  _target_: src.model_vqvae.Decoder
+  e_dim: 1
+  latent_size: 2
