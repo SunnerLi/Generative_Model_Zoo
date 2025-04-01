@@ -5,7 +5,7 @@ defaults:
   - model: g
   - loss: diffusion
   - optimizer: diffusion
-  - noise_scheduler: diffusion
+  - noise_scheduler: ?diffusion
 
 paths:
   root_dir: ${oc.env:PROJECT_ROOT}
